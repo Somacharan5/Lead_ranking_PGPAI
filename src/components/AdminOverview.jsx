@@ -98,40 +98,40 @@ export default function AdminOverview() {
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="bg-amber-500 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl">🛡️</div>
+        <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="bg-amber-500 text-white w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-lg">🛡️</div>
             <div>
-              <h1 className="text-xl font-bold text-gray-800">Admin Overview</h1>
-              <p className="text-sm text-gray-500">All counsellors — today's allocation</p>
+              <h1 className="text-base md:text-xl font-bold text-gray-800">Admin Overview</h1>
+              <p className="text-xs text-gray-500 hidden sm:block">All counsellors — today's allocation</p>
             </div>
           </div>
-          <div className="flex items-center space-x-3">
+          <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
             {refreshMessage && (
-              <span className="text-sm text-amber-700">{refreshMessage}</span>
+              <span className="text-xs text-amber-700 hidden sm:inline">{refreshMessage}</span>
             )}
             <button
               onClick={handleRefreshAll}
-              className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition"
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-medium transition"
             >
-              🔄 Refresh All
+              🔄 <span className="hidden sm:inline">Refresh All</span>
             </button>
             <button
               onClick={handleForceRefreshAll}
               disabled={refreshing}
-              className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 hidden sm:block"
             >
-              {refreshing ? 'Triggering...' : '⚡ Force Refresh All'}
+              {refreshing ? '...' : '⚡ Force Refresh'}
             </button>
             <button
               onClick={() => navigate('/admin')}
-              className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+              className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition"
             >
-              📋 Detailed View
+              📋 <span className="hidden sm:inline">Detailed View</span>
             </button>
             <button
               onClick={() => navigate('/')}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+              className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition"
             >
               🏠
             </button>
@@ -139,7 +139,7 @@ export default function AdminOverview() {
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6 space-y-6">
+      <main className="max-w-[1400px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
         {/* Summary bar */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-6">
           <div>

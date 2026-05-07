@@ -163,80 +163,109 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-10">
-        <div className="max-w-[1400px] mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <div className="bg-blue-600 text-white w-10 h-10 rounded-full flex items-center justify-center text-xl">🎯</div>
-            <div>
-              <h1 className="text-xl font-bold text-gray-800">AIAS Dashboard</h1>
-              <p className="text-sm text-gray-500">
-                {isAdmin ? `🛡️ Admin View - ${selectedCounsellor}` : `Welcome, ${selectedCounsellor}`}
+        <div className="max-w-[1400px] mx-auto px-4 py-3 flex items-center justify-between gap-2">
+          {/* Logo + title */}
+          <div className="flex items-center space-x-3 min-w-0">
+            <div className="bg-blue-600 text-white w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-lg">🎯</div>
+            <div className="min-w-0">
+              <h1 className="text-base md:text-xl font-bold text-gray-800 leading-tight">AIAS Dashboard</h1>
+              <p className="text-xs text-gray-500 truncate">
+                {isAdmin ? `🛡️ ${selectedCounsellor}` : `Welcome, ${selectedCounsellor.split(' ')[0]}`}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-3">
+          {/* Action buttons */}
+          <div className="flex items-center gap-2 shrink-0">
             {isAdmin && (
               <select
                 value={selectedCounsellor}
                 onChange={(e) => handleCounsellorSwitch(e.target.value)}
-                className="px-4 py-2 border border-gray-300 rounded-lg bg-white text-sm font-medium"
+                className="px-2 py-1.5 border border-gray-300 rounded-lg bg-white text-xs font-medium hidden sm:block"
               >
                 {COUNSELLORS.map(c => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             )}
-            
+
             {lastRefresh && (
               <span className="text-xs text-gray-500 hidden lg:inline">
-                Refreshed: {lastRefresh.toLocaleTimeString()}
+                {lastRefresh.toLocaleTimeString()}
               </span>
             )}
-            
+
             <button
               onClick={() => loadLeads(true)}
               disabled={loading}
-              className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-sm font-medium transition disabled:opacity-50"
+              className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-medium transition disabled:opacity-50"
             >
-              🔄 Refresh
+              🔄 <span className="hidden sm:inline">Refresh</span>
             </button>
 
             {isAdmin && (
               <>
                 <button
                   onClick={() => navigate('/admin/overview')}
-                  className="px-4 py-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-sm font-medium transition"
+                  className="px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium transition hidden sm:block"
                 >
                   📊 Overview
                 </button>
                 <button
                   onClick={handleAdminForceRefresh}
                   disabled={refreshing}
-                  className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-medium transition disabled:opacity-50"
-                  title="Triggers refresh for all counsellor dashboards"
+                  className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-xs font-medium transition disabled:opacity-50 hidden sm:block"
                 >
-                  {refreshing ? 'Triggering...' : '⚡ Force Refresh All'}
+                  {refreshing ? '...' : '⚡ Force Refresh'}
                 </button>
               </>
             )}
 
             <button
               onClick={() => navigate('/')}
-              className="px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-medium transition"
+              className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition"
             >
               🏠
             </button>
           </div>
         </div>
-        
+
+        {/* Mobile admin row */}
+        {isAdmin && (
+          <div className="sm:hidden px-4 pb-2 flex items-center gap-2 flex-wrap">
+            <select
+              value={selectedCounsellor}
+              onChange={(e) => handleCounsellorSwitch(e.target.value)}
+              className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg bg-white text-xs font-medium"
+            >
+              {COUNSELLORS.map(c => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+            <button
+              onClick={() => navigate('/admin/overview')}
+              className="px-3 py-1.5 bg-indigo-50 text-indigo-700 rounded-lg text-xs font-medium"
+            >
+              📊 Overview
+            </button>
+            <button
+              onClick={handleAdminForceRefresh}
+              disabled={refreshing}
+              className="px-3 py-1.5 bg-amber-500 text-white rounded-lg text-xs font-medium disabled:opacity-50"
+            >
+              {refreshing ? '...' : '⚡ Force'}
+            </button>
+          </div>
+        )}
+
         {refreshMessage && (
-          <div className="bg-amber-50 border-t border-amber-200 px-6 py-2 text-amber-700 text-sm text-center">
+          <div className="bg-amber-50 border-t border-amber-200 px-4 py-2 text-amber-700 text-xs text-center">
             {refreshMessage}
           </div>
         )}
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-6 py-6">
+      <main className="max-w-[1400px] mx-auto px-3 md:px-6 py-4 md:py-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-6">
             {error}
@@ -266,32 +295,36 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
 
             {/* TAB NAVIGATION */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
-              <div className="grid grid-cols-4">
+              <div className="grid grid-cols-2 md:grid-cols-4">
                 <TabButton
                   active={activeTab === 'fresh'}
                   onClick={() => setActiveTab('fresh')}
-                  label="🆕 Fresh Leads"
+                  label="🆕 Fresh"
+                  fullLabel="🆕 Fresh Leads"
                   count={data.freshLeads.length}
                   color="green"
                 />
                 <TabButton
                   active={activeTab === 'followup'}
                   onClick={() => setActiveTab('followup')}
-                  label="🔄 Followup Leads"
+                  label="🔄 Followup"
+                  fullLabel="🔄 Followup Leads"
                   count={data.followupLeads.length}
                   color="orange"
                 />
                 <TabButton
                   active={activeTab === 'newapp'}
                   onClick={() => setActiveTab('newapp')}
-                  label="📝 New App Starts"
+                  label="📝 New App"
+                  fullLabel="📝 New App Starts"
                   count={data.newAppStart.length}
                   color="purple"
                 />
                 <TabButton
                   active={activeTab === 'appfollowup'}
                   onClick={() => setActiveTab('appfollowup')}
-                  label="📞 App Followups"
+                  label="📞 App FU"
+                  fullLabel="📞 App Followups"
                   count={data.appFollowup.length}
                   color="pink"
                 />
@@ -299,20 +332,20 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
             </div>
 
             {/* TOTAL LEADS BAR */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4 mb-4 flex items-center justify-between">
+            <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 md:p-4 mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
-                <span className="text-sm text-gray-500">Total today's allocation: </span>
-                <span className="text-lg font-bold text-blue-700">{data.total} / 200 leads</span>
+                <span className="text-xs md:text-sm text-gray-500">Today's allocation: </span>
+                <span className="text-base md:text-lg font-bold text-blue-700">{data.total} / 200</span>
               </div>
-              <div className="flex items-center space-x-3">
+              <div className="flex items-center gap-2">
                 {copyMessage && (
-                  <span className="text-green-600 text-sm font-medium">{copyMessage}</span>
+                  <span className="text-green-600 text-xs font-medium">{copyMessage}</span>
                 )}
                 <button
                   onClick={copyAllEmails}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg text-sm font-medium transition"
+                  className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs md:text-sm font-medium transition"
                 >
-                  📧 Copy All Emails (this tab)
+                  📧 Copy Emails
                 </button>
               </div>
             </div>
@@ -325,26 +358,29 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
   )
 }
 
-function TabButton({ active, onClick, label, count, color }) {
+function TabButton({ active, onClick, label, fullLabel, count, color }) {
   const colors = {
-    green: { bg: 'bg-green-50', text: 'text-green-700', activeBg: 'bg-green-100', border: 'border-green-500' },
+    green:  { bg: 'bg-green-50',  text: 'text-green-700',  activeBg: 'bg-green-100',  border: 'border-green-500'  },
     orange: { bg: 'bg-orange-50', text: 'text-orange-700', activeBg: 'bg-orange-100', border: 'border-orange-500' },
     purple: { bg: 'bg-purple-50', text: 'text-purple-700', activeBg: 'bg-purple-100', border: 'border-purple-500' },
-    pink: { bg: 'bg-pink-50', text: 'text-pink-700', activeBg: 'bg-pink-100', border: 'border-pink-500' }
+    pink:   { bg: 'bg-pink-50',   text: 'text-pink-700',   activeBg: 'bg-pink-100',   border: 'border-pink-500'   }
   }
   const c = colors[color]
-  
+
   return (
     <button
       onClick={onClick}
-      className={`px-6 py-4 text-left transition border-b-4 ${
-        active 
-          ? `${c.activeBg} ${c.border}` 
+      className={`px-3 md:px-6 py-3 md:py-4 text-left transition border-b-4 ${
+        active
+          ? `${c.activeBg} ${c.border}`
           : `bg-white border-transparent hover:${c.bg}`
       }`}
     >
-      <p className={`text-sm font-medium ${active ? c.text : 'text-gray-600'}`}>{label}</p>
-      <p className={`text-2xl font-bold mt-1 ${active ? c.text : 'text-gray-800'}`}>{count}</p>
+      <p className={`text-xs md:text-sm font-medium ${active ? c.text : 'text-gray-600'}`}>
+        <span className="md:hidden">{label}</span>
+        <span className="hidden md:inline">{fullLabel}</span>
+      </p>
+      <p className={`text-xl md:text-2xl font-bold mt-1 ${active ? c.text : 'text-gray-800'}`}>{count}</p>
     </button>
   )
 }
