@@ -221,12 +221,14 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
               </>
             )}
 
-            <button
-              onClick={() => navigate('/')}
-              className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition"
-            >
-              🏠
-            </button>
+            {isAdmin && (
+              <button
+                onClick={() => navigate('/')}
+                className="px-2.5 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm transition"
+              >
+                🏠
+              </button>
+            )}
           </div>
         </div>
 
