@@ -242,7 +242,7 @@ export function getNewAppStart(newAppStartRows, counsellorName) {
     stage: getCol(row, 'AU'),
     subStage: getCol(row, 'AV'),
     notes: getCol(row, 'BM'),
-    score: parseFloat(getCol(row, 'AO')) || 0,
+    score: parseFloat(getCol(row, 'ET')) || 0,
     counsellor: getCol(row, 'AR'),
     priority: '',
     category: 'New App Start'
@@ -301,9 +301,9 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
     stage: getCol(row, 'AU'),
     subStage: getCol(row, 'AV'),
     notes: getCol(row, 'BM'),
-    score: parseFloat(getCol(row, 'AO')) || 0,
+    score: parseFloat(getCol(row, 'ET')) || 0,
     counsellor: getCol(row, 'AR'),
-    priority: getCol(row, 'BW'),
+    priority: getCol(row, 'EU'),
     category: 'App Followup'
   }))
 
@@ -384,8 +384,8 @@ export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, followupLead, newAppStart, appFollowup] = await Promise.all([
     fetchSheetData('Lead Dump', 'A:BZ'),
     fetchSheetData('Followup Sheet - LEAD', 'A:BZ'),
-    fetchSheetData('New - App start', 'A:BZ'),
-    fetchSheetData('Followup sheet - App start', 'A:BZ')
+    fetchSheetData('New - App start', 'A:EU'),
+    fetchSheetData('Followup sheet - App start', 'A:EU')
   ])
 
   const fresh = getFreshLeads(leadDump, counsellorName)
