@@ -337,7 +337,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-3 md:p-4 mb-4 flex flex-wrap items-center justify-between gap-2">
               <div>
                 <span className="text-xs md:text-sm text-gray-500">Today's allocation: </span>
-                <span className="text-base md:text-lg font-bold text-blue-700">{data.total} / 200</span>
+                <span className="text-base md:text-lg font-bold text-blue-700">{data.total} / 300</span>
               </div>
               <div className="flex items-center gap-2">
                 {copyMessage && (

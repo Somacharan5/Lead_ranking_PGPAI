@@ -398,7 +398,7 @@ export async function getLeadsForCounsellor(counsellorName) {
     followup.leads,
     newApp.leads,
     appFu.leads,
-    200
+    300
   )
 
   // v3: also surface "spoken today" counts so the UI can show counsellors
