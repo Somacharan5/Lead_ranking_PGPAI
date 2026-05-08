@@ -1,149 +1,157 @@
-# 🔧 Google Apps Script Setup (for Admin Force Refresh)
+# 🔧 Google Apps Script Setup
 
-This script enables the **Admin's "Force Refresh All"** button to update all counsellor dashboards simultaneously.
-
----
-
-## ⏱️ Setup Time: 5 minutes
+Handles two things:
+1. **Admin "Force Refresh All"** button — manually pushes a refresh signal to all dashboards
+2. **Daily 10:30 AM auto-refresh** — automatically refreshes all counsellor dashboards every morning
 
 ---
 
 ## Step 1: Add "Config" Tab to Your Google Sheet
 
 1. Open your Google Sheet
-2. Click the **+** at the bottom to add a new sheet
-3. Rename it to **`Config`** (exactly this, case-sensitive)
-4. In **A1** write: `Last Refresh Trigger`
-5. In **B1** write: any timestamp like `2026-05-07T00:00:00Z`
-6. In **A2** write: `Refresh Timestamp`
-7. Leave **B2** empty (it will be auto-updated)
-
-Your Config sheet should look like:
+2. Click **+** at the bottom → rename the new sheet to **`Config`** (exact case)
+3. Fill in:
 
 | | A | B |
 |---|---|---|
-| 1 | Last Refresh Trigger | 2026-05-07T00:00:00Z |
-| 2 | Refresh Timestamp | (empty) |
+| 1 | Last Refresh Trigger | 2026-05-08T00:00:00Z |
+| 2 | Refresh Timestamp | *(leave empty)* |
 
 ---
 
 ## Step 2: Open Apps Script
 
-1. In your Google Sheet, go to **Extensions → Apps Script**
-2. A new tab opens with the script editor
-3. Delete any existing code
+1. In your Google Sheet → **Extensions → Apps Script**
+2. Delete all existing code
 
 ---
 
 ## Step 3: Paste This Script
 
 ```javascript
+// ─── Manual trigger (called by admin's Force Refresh button) ───────────────
 function doGet(e) {
+  return writeRefreshTimestamp();
+}
+
+// ─── Scheduled trigger (runs daily at 10:30 AM IST) ──────────────────────
+function scheduledRefresh() {
+  writeRefreshTimestamp();
+}
+
+// ─── Shared: write current timestamp to Config!B2 ────────────────────────
+function writeRefreshTimestamp() {
   try {
     const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Config');
-    
     if (!sheet) {
       return ContentService.createTextOutput(JSON.stringify({
-        success: false,
-        error: 'Config sheet not found'
+        success: false, error: 'Config sheet not found'
       })).setMimeType(ContentService.MimeType.JSON);
     }
-    
     const now = new Date().toISOString();
     sheet.getRange('B2').setValue(now);
-    
     return ContentService.createTextOutput(JSON.stringify({
-      success: true,
-      timestamp: now
+      success: true, timestamp: now
     })).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(JSON.stringify({
-      success: false,
-      error: err.toString()
+      success: false, error: err.toString()
     })).setMimeType(ContentService.MimeType.JSON);
   }
+}
+
+// ─── Run this ONCE to install the daily 10:30 AM trigger ─────────────────
+// After pasting: Run → scheduledRefresh first to test, then run createDailyTrigger
+function createDailyTrigger() {
+  // Delete any existing scheduledRefresh triggers first (avoid duplicates)
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'scheduledRefresh') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Create new trigger: daily between 10:30–11:30 AM in script timezone
+  ScriptApp.newTrigger('scheduledRefresh')
+    .timeBased()
+    .everyDays(1)
+    .atHour(10)
+    .nearMinute(30)
+    .inTimezone('Asia/Kolkata')
+    .create();
+
+  Logger.log('✅ Daily trigger created — scheduledRefresh will run at ~10:30 AM IST every day');
 }
 ```
 
 ---
 
-## Step 4: Save & Deploy as Web App
+## Step 4: Set Script Timezone to IST
 
-1. Click the **💾 Save** button (or Ctrl+S)
-2. Name the project: **"AIAS Refresh Trigger"**
-3. Click **Deploy → New deployment**
-4. Click the gear icon ⚙️ next to "Select type" → choose **Web app**
-5. Configure:
-   - **Description:** AIAS Refresh Endpoint
-   - **Execute as:** Me (your email)
-   - **Who has access:** **Anyone**
-6. Click **Deploy**
-7. Authorize when prompted (click "Advanced" if you see a warning)
-8. **Copy the Web App URL** (looks like `https://script.google.com/macros/s/AKfy.../exec`)
+**Important — do this before creating the trigger:**
+
+1. In Apps Script → click **Project Settings** (gear icon ⚙️ on the left)
+2. Under **Time zone** → select **(GMT+05:30) India Standard Time**
+3. Save
 
 ---
 
-## Step 5: Add URL to Your Project
+## Step 5: Deploy as Web App (for manual Force Refresh)
 
-### **Local Development:**
-
-In your `.env` file, add:
-```
-VITE_APPS_SCRIPT_URL=https://script.google.com/macros/s/AKfy.../exec
-```
-
-### **Vercel Production:**
-
-1. Go to your Vercel project → **Settings → Environment Variables**
-2. Add: `VITE_APPS_SCRIPT_URL` = your Apps Script URL
-3. Redeploy
+1. Click **Deploy → New deployment**
+2. Gear icon ⚙️ → **Web app**
+3. Set:
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+4. Click **Deploy** → authorize → **copy the Web App URL**
+5. Add to your `.env` as `VITE_APPS_SCRIPT_URL`
 
 ---
 
-## ✅ Test It
+## Step 6: Install the Daily Trigger (run once)
 
-1. Open admin dashboard: `https://your-app.vercel.app/admin`
-2. Click **"⚡ Force Refresh All"** button
-3. Check your Google Sheet → Config!B2 should update with current timestamp
-4. Open `/jasmeet` in another tab → within 60 seconds it should auto-refresh
+1. In Apps Script, select `createDailyTrigger` from the function dropdown
+2. Click **▶ Run**
+3. Authorize if prompted
+4. Check the **Executions** log — you should see: `✅ Daily trigger created`
+5. Verify: go to **Triggers** (clock icon on left sidebar) — you should see `scheduledRefresh` listed
 
 ---
 
-## 🔄 How It Works
+## ✅ How to Test
+
+**Test the scheduled function manually:**
+1. Select `scheduledRefresh` from the dropdown → click **▶ Run**
+2. Open your Google Sheet → `Config!B2` should update with the current timestamp
+3. Open any counsellor dashboard — within 60 seconds it should auto-refresh
+
+**Test the Force Refresh button:**
+1. Open `/admin` dashboard → click **⚡ Force Refresh All**
+2. Check `Config!B2` updates
+
+---
+
+## 🔄 How It All Works
 
 ```
-Admin clicks "Force Refresh All"
-         ↓
-App calls Apps Script URL
-         ↓
-Script writes timestamp to Config!B2
-         ↓
+10:30 AM IST every day
+        ↓
+Apps Script scheduledRefresh() fires
+        ↓
+Writes timestamp → Config!B2
+        ↓
 Counsellor dashboards poll Config!B2 every 60 sec
-         ↓
-When they see new timestamp → refetch all data
-         ↓
-All dashboards show fresh data ✨
+        ↓
+See new timestamp → refetch all lead data
+        ↓
+Fresh data ready before counsellors start work ✨
+
+Admin clicks "Force Refresh All"
+        ↓
+Same flow — just triggered manually
 ```
 
 ---
 
 ## 🔒 Security Note
 
-The Apps Script URL is **public**, but:
-- Anyone with the URL can only update Config!B2 (just a timestamp)
-- They cannot read or modify other sheets
-- Worst case scenario: someone triggers a refresh (no actual harm)
-
-If you want to add security, you can modify the script to require a secret token:
-
-```javascript
-function doGet(e) {
-  const token = e.parameter.token;
-  if (token !== 'your_secret_token') {
-    return ContentService.createTextOutput('Unauthorized');
-  }
-  // ... rest of code
-}
-```
-
-Then update `triggerGlobalRefresh()` in `refreshSignal.js` to pass the token.
+The Web App URL is public but can only write a timestamp to `Config!B2`. Worst case: someone triggers a refresh. No sheet data is exposed or modifiable.
