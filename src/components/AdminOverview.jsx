@@ -144,11 +144,11 @@ export default function AdminOverview() {
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-6">
           <div>
             <p className="text-xs text-gray-500 uppercase tracking-wide">Total leads today</p>
-            <p className="text-3xl font-bold text-blue-700">{totalAll}</p>
+            <p className="text-3xl font-bold text-blue-700">{totalAll} <span className="text-base font-normal text-gray-400">/ {COUNSELLORS.length * 300}</span></p>
           </div>
           <div>
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Counsellors</p>
-            <p className="text-3xl font-bold text-gray-800">{COUNSELLORS.length}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Per counsellor</p>
+            <p className="text-3xl font-bold text-gray-800">300</p>
           </div>
           {spokenAll > 0 && (
             <div className="ml-auto bg-emerald-50 border border-emerald-200 rounded-lg px-4 py-2 text-sm text-emerald-800">
@@ -159,7 +159,7 @@ export default function AdminOverview() {
 
         {/* Per-counsellor cards */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {rows.map((row, i) => (
+          {rows.map((row) => (
             <CounsellorCard key={row.name} row={row} onDrillDown={() => navigate('/admin', { state: { counsellor: row.name } })} />
           ))}
         </div>
