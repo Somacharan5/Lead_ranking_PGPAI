@@ -1,7 +1,7 @@
 import { fetchSheetData, getCol } from './sheetsApi'
 
 // ============================================================================
-// COLUMN REFERENCE — verified against Lead_Ranking_3Sheets_9.xlsx
+// COLUMN REFERENCE — verified against Lead_Ranking_3Sheets_10.xlsx
 // ============================================================================
 //
 // LEAD DUMP & FOLLOWUP SHEET - LEAD (same schema):
@@ -36,19 +36,31 @@ function parseDate(dateStr) {
   const s = String(dateStr).trim()
   if (!s) return null
 
-  // ── Excel / Google Sheets serial number (e.g. 46142.65278) ────────────────
-  // Followup Sheet LEAD col AC returns dates as float serial numbers.
-  // Formula: (serial - 25569) * 86400 * 1000 ms from Unix epoch.
-  // Range 40000–60000 covers roughly 2009–2064, safe for CRM data.
+  // ── Excel / Google Sheets serial number ───────────────────────────────────
+  // PRIMARY PATH: with valueRenderOption=UNFORMATTED_VALUE, the Sheets API
+  // returns all date cells as float serial numbers (e.g. 46152.79).
+  // Range 40000–60000 covers roughly 2009–2064 — safe for all CRM dates.
   const numVal = Number(s)
   if (!isNaN(numVal) && numVal > 40000 && numVal < 60000) {
     return new Date((numVal - 25569) * 86400 * 1000)
   }
 
-  // ── DD/MM/YYYY or DD-MM-YYYY (Indian CRM export format) ──────────────────
+  // ── ISO 8601: YYYY-MM-DD (unambiguous — try before slash formats) ─────────
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) {
+    return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]))
+  }
+
+  // ── Slash/dash separated: DD/MM/YYYY or MM/DD/YYYY ───────────────────────
+  // Disambiguate by value: if the first number is > 12 it must be the day;
+  // if the second number is > 12 it must be the day (so first = month).
+  // When both ≤ 12 (truly ambiguous), assume DD/MM/YYYY (Indian CRM default).
   const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
   if (dmy) {
-    return new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]))
+    const p1 = parseInt(dmy[1]), p2 = parseInt(dmy[2]), year = parseInt(dmy[3])
+    if (p1 > 12) return new Date(year, p2 - 1, p1)  // must be DD/MM/YYYY
+    if (p2 > 12) return new Date(year, p1 - 1, p2)  // must be MM/DD/YYYY
+    return new Date(year, p2 - 1, p1)                 // ambiguous → assume DD/MM
   }
 
   // ── DD MMM YYYY (e.g. "22 Feb 2026") ─────────────────────────────────────
@@ -57,7 +69,7 @@ function parseDate(dateStr) {
     return new Date(`${dmy2[2]} ${dmy2[1]}, ${dmy2[3]}`)
   }
 
-  // ── ISO 8601 and everything else — let JS try ────────────────────────────
+  // ── ISO 8601 with time / everything else — let JS try ────────────────────
   const d = new Date(s)
   if (!isNaN(d)) return d
 
@@ -173,10 +185,11 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 //   O  (User Type)  = "lead"
 //   U  (Counsellor) = [logged-in counsellor]
 //   IF V = "Counseled"              → AC ≥ 3 days ago
-//   IF V = "No Contact Established" → AC ≤ yesterday
+//   IF V = "No Contact Established" → AC ≤ yesterday OR AC is empty
 //
-// NOTE: Both date conditions mathematically exclude today, so no extra v3
-// guard is needed. We still count today-activity rows for UI transparency.
+// FIX: NCE leads with NO last activity (never contacted) were previously
+// excluded because isYesterdayOrOlder(null) = false. A lead that has NEVER
+// been contacted is highest priority — it must always be included.
 //
 // IMPORTANT: AC in this sheet arrives as Excel serial floats (e.g. 46142.65).
 // parseDate() handles this via the serial-number branch above.
@@ -205,8 +218,11 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 
     if (leadStage === 'Counseled' && daysAgoOrMore(lastAct, 3)) {
       actionable.push(row)
-    } else if (leadStage === 'No Contact Established' && isYesterdayOrOlder(lastAct)) {
-      actionable.push(row)
+    } else if (leadStage === 'No Contact Established') {
+      // FIX: include if lastAct is empty (never contacted) OR old enough
+      if (!lastAct || isYesterdayOrOlder(lastAct)) {
+        actionable.push(row)
+      }
     }
   })
 
@@ -292,10 +308,10 @@ export function getNewAppStart(newAppStartRows, counsellorName) {
 // FILTER:
 //   AR (Counsellor)        = [logged-in counsellor]
 //   IF AU = "Counseled"              → BG ≥ 3 days ago
-//   IF AU = "No Contact Established" → BG ≤ yesterday
+//   IF AU = "No Contact Established" → BG ≤ yesterday OR BG is empty
 //
-// Existing date conditions already exclude today. Defensive guard added for
-// transparency.
+// FIX: NCE leads with NO last activity (never contacted) were previously
+// excluded. Same fix as Section 2 — always include never-contacted leads.
 // ============================================================================
 export function getAppFollowup(appFollowupRows, counsellorName) {
   const dataRows = appFollowupRows.slice(1)
@@ -319,8 +335,11 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
 
     if (appStage === 'Counseled' && daysAgoOrMore(lastAct, 3)) {
       actionable.push(row)
-    } else if (appStage === 'No Contact Established' && isYesterdayOrOlder(lastAct)) {
-      actionable.push(row)
+    } else if (appStage === 'No Contact Established') {
+      // FIX: include if lastAct is empty (never contacted) OR old enough
+      if (!lastAct || isYesterdayOrOlder(lastAct)) {
+        actionable.push(row)
+      }
     }
   })
 
@@ -367,10 +386,10 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
   const sortedNewApp = sortLeads([...newApp])
   const sortedAppFollowup = sortLeads([...appFollowup])
 
-  const targetFresh = Math.round(totalTarget * ratios.fresh)
-  const targetFollowup = Math.round(totalTarget * ratios.followup)
-  const targetNewApp = Math.round(totalTarget * ratios.newApp)
-  const targetAppFollowup = totalTarget - targetFresh - targetFollowup - targetNewApp
+  const targetFresh = Math.round(totalTarget * ratios.fresh)         // 89
+  const targetFollowup = Math.round(totalTarget * ratios.followup)   // 73
+  const targetNewApp = Math.round(totalTarget * ratios.newApp)       // 55
+  const targetAppFollowup = totalTarget - targetFresh - targetFollowup - targetNewApp // 83
 
   const allocFresh = sortedFresh.slice(0, targetFresh)
   const allocFollowup = sortedFollowup.slice(0, targetFollowup)
@@ -427,7 +446,7 @@ export async function getLeadsForCounsellor(counsellorName) {
     followup.leads,
     newApp.leads,
     appFu.leads,
-    300
+    300  // 300 leads per day (89 fresh / 73 followup / 55 new app / 83 app followup)
   )
 
   // Surface "spoken today" counts so the UI can show counsellors exactly

@@ -8,7 +8,7 @@ Web dashboard for Masters Union counsellors to view their daily prioritized lead
 
 - 🔗 **Direct URL access** — no login, just bookmark your link
 - 📊 **4 separate tabs** — Fresh Leads, Followup Leads, New App Starts, App Followups
-- 🎯 **200 leads per day** distributed in your exact ratio (29.5% / 24.3% / 18.3% / 27.9%)
+- 🎯 **300 leads per day** distributed in your exact ratio (29.5% / 24.3% / 18.3% / 27.9%)
 - 📈 **Sorted by Lead Score** (highest first), then by Priority
 - ✅ **Already-spoken-today auto-hidden** — uses `Counsellor Last Activity Date` so leads disappear from your queue the moment you call them, even before you update the stage in CRM (v3)
 - 🔁 **Automatic carry-forward** — leads not contacted today reappear tomorrow, no manual tracking needed
@@ -33,14 +33,14 @@ Web dashboard for Masters Union counsellors to view their daily prioritized lead
 
 ## 📊 How Lead Allocation Works
 
-For each counsellor, **200 leads** are pulled in this ratio:
+For each counsellor, **300 leads** are pulled in this ratio:
 
 | Section | % | Count | Source Sheet | Filter |
 |---------|---|-------|--------------|--------|
-| Fresh Leads | 29.5% | 59 | `Lead Dump` | Registered ≤ yesterday + Untouched + lead + **Last Activity ≠ today** |
-| Followup Leads | 24.3% | 49 | `Followup Sheet - LEAD` | Counseled (3+ days old) OR NCE (≤ yesterday) |
-| New App Starts | 18.3% | 37 | `New - App start` | Untouched + Form started ≤ yesterday + **Last Activity ≠ today** |
-| App Followups | 27.9% | 55 | `Followup sheet - App start` | Counseled (3+ days old) OR NCE (≤ yesterday) |
+| Fresh Leads | 29.5% | 89 | `Lead Dump` | Registered ≤ yesterday + Untouched + lead + **Last Activity ≠ today** |
+| Followup Leads | 24.3% | 73 | `Followup Sheet - LEAD` | Counseled (3+ days old) OR NCE (≤ yesterday) |
+| New App Starts | 18.3% | 55 | `New - App start` | Untouched + Form started ≤ yesterday + **Last Activity ≠ today** |
+| App Followups | 27.9% | 83 | `Followup sheet - App start` | Counseled (3+ days old) OR NCE (≤ yesterday) |
 
 **Shortfall handling:** If any category has fewer leads than the ratio, the shortfall is filled from the highest-scoring leads in other categories.
 

@@ -1,9 +1,15 @@
 import { useState } from 'react'
 
+function parseSerial(val) {
+  const n = Number(val)
+  if (!isNaN(n) && n > 40000 && n < 60000) return new Date((n - 25569) * 86400 * 1000)
+  return new Date(val)
+}
+
 function formatDate(dateStr) {
   if (!dateStr) return ''
-  const d = new Date(dateStr)
-  if (isNaN(d)) return dateStr
+  const d = parseSerial(dateStr)
+  if (isNaN(d)) return String(dateStr)
   return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
@@ -31,7 +37,7 @@ function sortValue(lead, key) {
     return parseInt((lead.priority || '').replace(/\D/g, '')) || 99
   }
   if (key === 'registeredOn' || key === 'counsellorLastActivity') {
-    const d = new Date(lead[key])
+    const d = parseSerial(lead[key])
     return isNaN(d) ? 0 : d.getTime()
   }
   return lead[key] ?? ''
