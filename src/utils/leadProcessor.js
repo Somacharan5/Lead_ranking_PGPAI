@@ -1,26 +1,63 @@
 import { fetchSheetData, getCol } from './sheetsApi'
 
 // ============================================================================
+// COLUMN REFERENCE — verified against Lead_Ranking_3Sheets_9.xlsx
+// ============================================================================
+//
+// LEAD DUMP & FOLLOWUP SHEET - LEAD (same schema):
+//   A   Name                          U   Counsellor
+//   B   Email                         V   Lead Stage
+//   C   Mobile                        W   Lead Sub Stage
+//   G   Primary Source                AC  Counsellor Last Activity Date
+//   H   Primary Medium                AH  Notes
+//   I   Primary Campaign              BV  Total Lead Score
+//   O   User Type                     BW  Followup Priority (Followup sheet only)
+//   S   Registered On
+//
+// NEW - APP START & FOLLOWUP SHEET - APP START (same schema):
+//   M   Name                          AV  Application Sub Stage
+//   N   Email                         BG  Counsellor Last Activity Date
+//   O   Mobile                        BM  Notes
+//   Q   Registered On                 ET  Total Score
+//   S   Source                        EU  Followup Priority
+//   T   Medium
+//   U   Campaign
+//   AR  Counsellor
+//   AU  Application Stage
+//
+// ============================================================================
+
+// ============================================================================
 // DATE HELPERS
 // ============================================================================
 
 function parseDate(dateStr) {
-  if (!dateStr && dateStr !== 0) return null
+  if (dateStr === null || dateStr === undefined || dateStr === '') return null
   const s = String(dateStr).trim()
+  if (!s) return null
 
-  // DD/MM/YYYY or DD-MM-YYYY (Indian CRM format)
+  // ── Excel / Google Sheets serial number (e.g. 46142.65278) ────────────────
+  // Followup Sheet LEAD col AC returns dates as float serial numbers.
+  // Formula: (serial - 25569) * 86400 * 1000 ms from Unix epoch.
+  // Range 40000–60000 covers roughly 2009–2064, safe for CRM data.
+  const numVal = Number(s)
+  if (!isNaN(numVal) && numVal > 40000 && numVal < 60000) {
+    return new Date((numVal - 25569) * 86400 * 1000)
+  }
+
+  // ── DD/MM/YYYY or DD-MM-YYYY (Indian CRM export format) ──────────────────
   const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
   if (dmy) {
     return new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]))
   }
 
-  // DD MMM YYYY (e.g. "22 Feb 2026")
+  // ── DD MMM YYYY (e.g. "22 Feb 2026") ─────────────────────────────────────
   const dmy2 = s.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/)
   if (dmy2) {
     return new Date(`${dmy2[2]} ${dmy2[1]}, ${dmy2[3]}`)
   }
 
-  // ISO and everything else — let JS try
+  // ── ISO 8601 and everything else — let JS try ────────────────────────────
   const d = new Date(s)
   if (!isNaN(d)) return d
 
@@ -39,81 +76,72 @@ function daysDiff(date1, date2) {
   return Math.floor((d1 - d2) / (1000 * 60 * 60 * 24))
 }
 
-// Yesterday or older — i.e., NOT today (any past date)
+// Yesterday or older — any date that is NOT today
 function isYesterdayOrOlder(dateStr) {
   const d = parseDate(dateStr)
   if (!d) return false
-  const today = new Date()
-  return daysDiff(today, d) >= 1
+  return daysDiff(new Date(), d) >= 1
 }
 
 // 3 or more days ago
 function daysAgoOrMore(dateStr, days) {
   const d = parseDate(dateStr)
   if (!d) return false
-  const today = new Date()
-  return daysDiff(today, d) >= days
+  return daysDiff(new Date(), d) >= days
 }
 
-// 🔑 NEW IN v3: Is this date today (in local timezone)?
-// Used to detect "counsellor already spoke to this lead today".
-// If `Counsellor Last Activity Date` is today, the lead is excluded —
-// regardless of whether the CRM has updated the Stage column yet.
+// Is this date today (local timezone)?
 function isToday(dateStr) {
   const d = parseDate(dateStr)
   if (!d) return false
   return daysDiff(new Date(), d) === 0
 }
 
-// Empty / missing last activity is treated as "never contacted" → include.
+// Empty / missing last activity = never contacted → include (do NOT exclude).
 function spokeToday(lastActivityStr) {
   if (!lastActivityStr) return false
   return isToday(lastActivityStr)
 }
 
 // ============================================================================
-// SECTION 1: Fresh Leads from Lead Dump
+// SECTION 1: Fresh Leads — from "Lead Dump"
 // ============================================================================
 //
 // FILTER:
-//   - User Type = "lead"
-//   - Lead Stage = "Untouched"
-//   - Counsellor = [logged-in user]
-//   - Registered On <= yesterday
-//   - Counsellor Last Activity != today  <-- v3
+//   O  (User Type)                  = "lead"
+//   V  (Lead Stage)                 = "Untouched"
+//   U  (Counsellor)                 = [logged-in counsellor]
+//   S  (Registered On)              ≤ yesterday
+//   AC (Counsellor Last Activity)   ≠ today        ← v3 lag-window fix
 //
-// WHY THE LAST CHECK:
-//   When a counsellor calls a lead, the CRM logs an activity (BK gets
-//   stamped with the call time) but the Stage column may not flip from
-//   "Untouched" to "Counseled"/"NCE" until the counsellor manually updates
-//   it. Without the v3 check, the lead would keep appearing in this tab
-//   throughout the day even though it's already been contacted.
-//
-//   Leads not contacted today carry forward automatically: tomorrow, the
-//   same filter still passes (last activity will be from a previous day,
-//   not today), so the lead reappears.
+// WHY AC ≠ today:
+//   When a counsellor calls, the CRM stamps AC immediately. But V (Lead Stage)
+//   may not flip from "Untouched" until the counsellor manually updates it.
+//   Without this check, a just-called lead keeps reappearing all day.
+//   Leads skipped today carry forward automatically (AC is still empty or old
+//   tomorrow, so they pass the filter again).
 // ============================================================================
 export function getFreshLeads(leadDumpRows, counsellorName) {
   const dataRows = leadDumpRows.slice(1)
+
   const allMatching = dataRows.filter(row => {
-    const userType = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const leadStage = (getCol(row, 'BD') || '').trim()
-    const counsellor = (getCol(row, 'BC') || '').trim()
-    const registeredOn = getCol(row, 'BA')
+    const userType = (getCol(row, 'O') || '').toLowerCase().trim()
+    const leadStage = (getCol(row, 'V') || '').trim()
+    const counsellor = (getCol(row, 'U') || '').trim()
+    const regOn = getCol(row, 'S')
     return (
       userType === 'lead' &&
       leadStage === 'Untouched' &&
       counsellor === counsellorName &&
-      isYesterdayOrOlder(registeredOn)
+      isYesterdayOrOlder(regOn)
     )
   })
 
-  // Split into "spoken today" (excluded) vs "actionable" (included).
   const spokenToday = []
   const actionable = []
   allMatching.forEach(row => {
-    const target = spokeToday(getCol(row, 'BK')) ? spokenToday : actionable
-    target.push(row)
+    const bucket = spokeToday(getCol(row, 'AC')) ? spokenToday : actionable
+    bucket.push(row)
   })
 
   const mapped = actionable.map(row => ({
@@ -121,38 +149,37 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     email: getCol(row, 'B'),
     mobile: getCol(row, 'C'),
     source: getCol(row, 'G'),
-    registeredOn: getCol(row, 'BA'),
+    registeredOn: getCol(row, 'S'),
     medium: getCol(row, 'H'),
-    counsellorLastActivity: getCol(row, 'BK'),
+    counsellorLastActivity: getCol(row, 'AC'),
     campaign: getCol(row, 'I'),
-    stage: getCol(row, 'BD'),
-    subStage: getCol(row, 'BE'),
-    notes: getCol(row, 'BP'),
+    stage: getCol(row, 'V'),
+    subStage: getCol(row, 'W'),
+    notes: getCol(row, 'AH'),
     score: parseFloat(getCol(row, 'BV')) || 0,
-    counsellor: getCol(row, 'BC'),
+    counsellor: getCol(row, 'U'),
     priority: '',
-    category: 'Fresh Lead'
+    category: 'Fresh Lead',
   }))
 
   return { leads: mapped, spokenTodayCount: spokenToday.length }
 }
 
 // ============================================================================
-// SECTION 2: Followup Leads from Followup Sheet - LEAD
+// SECTION 2: Followup Leads — from "Followup Sheet - LEAD"
 // ============================================================================
 //
 // FILTER:
-//   - Counsellor = [logged-in user]
-//   - User Type = "lead"
-//   - IF Stage = "Counseled"            -> Last Activity >= 3 days ago
-//   - IF Stage = "No Contact Established" -> Last Activity <= yesterday
+//   O  (User Type)  = "lead"
+//   U  (Counsellor) = [logged-in counsellor]
+//   IF V = "Counseled"              → AC ≥ 3 days ago
+//   IF V = "No Contact Established" → AC ≤ yesterday
 //
-// NOTE ON "SPOKEN TODAY":
-//   The two date conditions above mathematically exclude today by definition
-//   ("3 days ago" and "yesterday or older" both reject today). So no
-//   additional v3 check is needed here -- the section is self-correcting.
-//   We still count any edge-case rows where last activity is today for
-//   UI transparency.
+// NOTE: Both date conditions mathematically exclude today, so no extra v3
+// guard is needed. We still count today-activity rows for UI transparency.
+//
+// IMPORTANT: AC in this sheet arrives as Excel serial floats (e.g. 46142.65).
+// parseDate() handles this via the serial-number branch above.
 // ============================================================================
 export function getFollowupLeads(followupLeadRows, counsellorName) {
   const dataRows = followupLeadRows.slice(1)
@@ -161,28 +188,24 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
   const actionable = []
 
   dataRows.forEach(row => {
-    const counsellor = (getCol(row, 'BC') || '').trim()
-    const userType = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const leadStage = (getCol(row, 'BD') || '').trim()
-    const lastActivity = getCol(row, 'BK')
+    const counsellor = (getCol(row, 'U') || '').trim()
+    const userType = (getCol(row, 'O') || '').toLowerCase().trim()
+    const leadStage = (getCol(row, 'V') || '').trim()
+    const lastAct = getCol(row, 'AC')
 
     if (counsellor !== counsellorName || userType !== 'lead') return
 
-    // Defensive: if last activity is today, count and skip (covers any
-    // future filter relaxation; current date filters already exclude this).
-    if (spokeToday(lastActivity)) {
-      const isRelevantStage =
-        leadStage === 'Counseled' || leadStage === 'No Contact Established'
-      if (isRelevantStage) spokenTodayCount += 1
+    // Defensive guard: if somehow AC = today, count and skip.
+    if (spokeToday(lastAct)) {
+      if (leadStage === 'Counseled' || leadStage === 'No Contact Established') {
+        spokenTodayCount++
+      }
       return
     }
 
-    if (leadStage === 'Counseled' && daysAgoOrMore(lastActivity, 3)) {
+    if (leadStage === 'Counseled' && daysAgoOrMore(lastAct, 3)) {
       actionable.push(row)
-    } else if (
-      leadStage === 'No Contact Established' &&
-      isYesterdayOrOlder(lastActivity)
-    ) {
+    } else if (leadStage === 'No Contact Established' && isYesterdayOrOlder(lastAct)) {
       actionable.push(row)
     }
   })
@@ -192,53 +215,53 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
     email: getCol(row, 'B'),
     mobile: getCol(row, 'C'),
     source: getCol(row, 'G'),
-    registeredOn: getCol(row, 'BA'),
+    registeredOn: getCol(row, 'S'),
     medium: getCol(row, 'H'),
-    counsellorLastActivity: getCol(row, 'BK'),
+    counsellorLastActivity: getCol(row, 'AC'),
     campaign: getCol(row, 'I'),
-    stage: getCol(row, 'BD'),
-    subStage: getCol(row, 'BE'),
-    notes: getCol(row, 'BP'),
+    stage: getCol(row, 'V'),
+    subStage: getCol(row, 'W'),
+    notes: getCol(row, 'AH'),
     score: parseFloat(getCol(row, 'BV')) || 0,
-    counsellor: getCol(row, 'BC'),
+    counsellor: getCol(row, 'U'),
     priority: getCol(row, 'BW'),
-    category: 'Followup Lead'
+    category: 'Followup Lead',
   }))
 
   return { leads: mapped, spokenTodayCount }
 }
 
 // ============================================================================
-// SECTION 3: New App Starts from "New - App start"
+// SECTION 3: New App Starts — from "New - App start"
 // ============================================================================
 //
 // FILTER:
-//   - Counsellor = [logged-in user]
-//   - Application Stage = "Untouched"
-//   - Form Started <= yesterday
-//   - Counsellor Last Activity != today  <-- v3
+//   AR (Counsellor)            = [logged-in counsellor]
+//   AU (Application Stage)     = "Untouched"
+//   Q  (Registered On)         ≤ yesterday
+//   BG (Counsellor Last Activ) ≠ today        ← v3 lag-window fix
 //
 // (Same lag-window rationale as Section 1.)
 // ============================================================================
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
-const allMatching = dataRows.filter(row => {
+  const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage = (getCol(row, 'AU') || '').trim()
-    const formStart = getCol(row, 'Q')
+    const regOn = getCol(row, 'Q')
     return (
       counsellor === counsellorName &&
       appStage === 'Untouched' &&
-      isYesterdayOrOlder(formStart)
+      isYesterdayOrOlder(regOn)
     )
   })
 
   const spokenToday = []
   const actionable = []
   allMatching.forEach(row => {
-    const target = spokeToday(getCol(row, 'BG')) ? spokenToday : actionable
-    target.push(row)
+    const bucket = spokeToday(getCol(row, 'BG')) ? spokenToday : actionable
+    bucket.push(row)
   })
 
   const mapped = actionable.map(row => ({
@@ -256,19 +279,23 @@ const allMatching = dataRows.filter(row => {
     score: parseFloat(getCol(row, 'ET')) || 0,
     counsellor: getCol(row, 'AR'),
     priority: '',
-    category: 'New App Start'
+    category: 'New App Start',
   }))
 
   return { leads: mapped, spokenTodayCount: spokenToday.length }
 }
 
 // ============================================================================
-// SECTION 4: App Followups from "Followup sheet - App start"
+// SECTION 4: App Followups — from "Followup sheet - App start"
 // ============================================================================
 //
-// Same shape as Section 2, applied to application-side data.
-// Existing date filters mathematically exclude today; we still count
-// today-activity rows for UI transparency.
+// FILTER:
+//   AR (Counsellor)        = [logged-in counsellor]
+//   IF AU = "Counseled"              → BG ≥ 3 days ago
+//   IF AU = "No Contact Established" → BG ≤ yesterday
+//
+// Existing date conditions already exclude today. Defensive guard added for
+// transparency.
 // ============================================================================
 export function getAppFollowup(appFollowupRows, counsellorName) {
   const dataRows = appFollowupRows.slice(1)
@@ -279,23 +306,20 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
   dataRows.forEach(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage = (getCol(row, 'AU') || '').trim()
-    const lastActivity = getCol(row, 'BG')
+    const lastAct = getCol(row, 'BG')
 
     if (counsellor !== counsellorName) return
 
-    if (spokeToday(lastActivity)) {
-      const isRelevantStage =
-        appStage === 'Counseled' || appStage === 'No Contact Established'
-      if (isRelevantStage) spokenTodayCount += 1
+    if (spokeToday(lastAct)) {
+      if (appStage === 'Counseled' || appStage === 'No Contact Established') {
+        spokenTodayCount++
+      }
       return
     }
 
-    if (appStage === 'Counseled' && daysAgoOrMore(lastActivity, 3)) {
+    if (appStage === 'Counseled' && daysAgoOrMore(lastAct, 3)) {
       actionable.push(row)
-    } else if (
-      appStage === 'No Contact Established' &&
-      isYesterdayOrOlder(lastActivity)
-    ) {
+    } else if (appStage === 'No Contact Established' && isYesterdayOrOlder(lastAct)) {
       actionable.push(row)
     }
   })
@@ -315,7 +339,7 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
     score: parseFloat(getCol(row, 'ET')) || 0,
     counsellor: getCol(row, 'AR'),
     priority: getCol(row, 'EU'),
-    category: 'App Followup'
+    category: 'App Followup',
   }))
 
   return { leads: mapped, spokenTodayCount }
@@ -328,13 +352,14 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
 function sortLeads(leads) {
   return leads.sort((a, b) => {
     if (b.score !== a.score) return b.score - a.score
+    // Parse "Priority 1" / "1" / "" etc. — fall back to 99 (lowest priority)
     const aPrio = parseInt((a.priority || '').replace(/\D/g, '')) || 99
     const bPrio = parseInt((b.priority || '').replace(/\D/g, '')) || 99
     return aPrio - bPrio
   })
 }
 
-export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget = 200) {
+export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget = 300) {
   const ratios = { fresh: 0.295, followup: 0.243, newApp: 0.183, appFollowup: 0.279 }
 
   const sortedFresh = sortLeads([...fresh])
@@ -342,36 +367,33 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
   const sortedNewApp = sortLeads([...newApp])
   const sortedAppFollowup = sortLeads([...appFollowup])
 
-  let targetFresh = Math.round(totalTarget * ratios.fresh)
-  let targetFollowup = Math.round(totalTarget * ratios.followup)
-  let targetNewApp = Math.round(totalTarget * ratios.newApp)
-  let targetAppFollowup = totalTarget - targetFresh - targetFollowup - targetNewApp
+  const targetFresh = Math.round(totalTarget * ratios.fresh)
+  const targetFollowup = Math.round(totalTarget * ratios.followup)
+  const targetNewApp = Math.round(totalTarget * ratios.newApp)
+  const targetAppFollowup = totalTarget - targetFresh - targetFollowup - targetNewApp
 
   const allocFresh = sortedFresh.slice(0, targetFresh)
   const allocFollowup = sortedFollowup.slice(0, targetFollowup)
   const allocNewApp = sortedNewApp.slice(0, targetNewApp)
   const allocAppFollowup = sortedAppFollowup.slice(0, targetAppFollowup)
 
+  // Shortfall: fill from leftover leads sorted by score
   const shortfall =
     totalTarget -
-    (allocFresh.length +
-      allocFollowup.length +
-      allocNewApp.length +
-      allocAppFollowup.length)
+    (allocFresh.length + allocFollowup.length + allocNewApp.length + allocAppFollowup.length)
 
   if (shortfall > 0) {
     const remainder = [
       ...sortedFresh.slice(targetFresh),
       ...sortedFollowup.slice(targetFollowup),
       ...sortedNewApp.slice(targetNewApp),
-      ...sortedAppFollowup.slice(targetAppFollowup)
+      ...sortedAppFollowup.slice(targetAppFollowup),
     ]
-    const fillUp = sortLeads(remainder).slice(0, shortfall)
-    fillUp.forEach(lead => {
+    sortLeads(remainder).slice(0, shortfall).forEach(lead => {
       if (lead.category === 'Fresh Lead') allocFresh.push(lead)
       else if (lead.category === 'Followup Lead') allocFollowup.push(lead)
       else if (lead.category === 'New App Start') allocNewApp.push(lead)
-      else if (lead.category === 'App Followup') allocAppFollowup.push(lead)
+      else allocAppFollowup.push(lead)
     })
   }
 
@@ -380,11 +402,7 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
     followupLeads: allocFollowup,
     newAppStart: allocNewApp,
     appFollowup: allocAppFollowup,
-    total:
-      allocFresh.length +
-      allocFollowup.length +
-      allocNewApp.length +
-      allocAppFollowup.length
+    total: allocFresh.length + allocFollowup.length + allocNewApp.length + allocAppFollowup.length,
   }
 }
 
@@ -393,10 +411,10 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
 // ============================================================================
 export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, followupLead, newAppStart, appFollowup] = await Promise.all([
-    fetchSheetData('Lead Dump', 'A:BZ'),
-    fetchSheetData('Followup Sheet - LEAD', 'A:BZ'),
+    fetchSheetData('Lead Dump', 'A:BW'),
+    fetchSheetData('Followup Sheet - LEAD', 'A:BW'),
     fetchSheetData('New - App start', 'A:EU'),
-    fetchSheetData('Followup sheet - App start', 'A:EU')
+    fetchSheetData('Followup sheet - App start', 'A:EU'),
   ])
 
   const fresh = getFreshLeads(leadDump, counsellorName)
@@ -412,8 +430,8 @@ export async function getLeadsForCounsellor(counsellorName) {
     300
   )
 
-  // v3: also surface "spoken today" counts so the UI can show counsellors
-  // exactly how many leads were filtered out today and trust the dashboard.
+  // Surface "spoken today" counts so the UI can show counsellors exactly
+  // how many leads were filtered out and why the count is what it is.
   const spokenToday = {
     fresh: fresh.spokenTodayCount,
     followup: followup.spokenTodayCount,
@@ -423,7 +441,7 @@ export async function getLeadsForCounsellor(counsellorName) {
       fresh.spokenTodayCount +
       followup.spokenTodayCount +
       newApp.spokenTodayCount +
-      appFu.spokenTodayCount
+      appFu.spokenTodayCount,
   }
 
   return { ...allocation, spokenToday }
