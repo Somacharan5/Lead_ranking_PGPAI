@@ -6,14 +6,24 @@ import { fetchSheetData, getCol } from './sheetsApi'
 
 function parseDate(dateStr) {
   if (!dateStr && dateStr !== 0) return null
-  // Native parser handles ISO strings, JS Date strings, etc.
-  let d = new Date(dateStr)
-  if (!isNaN(d)) return d
-  // Fallback for "DD MMM YYYY" format (common in Indian CRM exports)
-  const match = String(dateStr).match(/(\d{1,2})\s+(\w+)\s+(\d{4})/)
-  if (match) {
-    return new Date(`${match[2]} ${match[1]}, ${match[3]}`)
+  const s = String(dateStr).trim()
+
+  // DD/MM/YYYY or DD-MM-YYYY (Indian CRM format)
+  const dmy = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})$/)
+  if (dmy) {
+    return new Date(parseInt(dmy[3]), parseInt(dmy[2]) - 1, parseInt(dmy[1]))
   }
+
+  // DD MMM YYYY (e.g. "22 Feb 2026")
+  const dmy2 = s.match(/(\d{1,2})\s+(\w+)\s+(\d{4})/)
+  if (dmy2) {
+    return new Date(`${dmy2[2]} ${dmy2[1]}, ${dmy2[3]}`)
+  }
+
+  // ISO and everything else — let JS try
+  const d = new Date(s)
+  if (!isNaN(d)) return d
+
   return null
 }
 
@@ -212,7 +222,8 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 // ============================================================================
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
-  const allMatching = dataRows.filter(row => {
+
+const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage = (getCol(row, 'AU') || '').trim()
     const formStart = getCol(row, 'Q')
