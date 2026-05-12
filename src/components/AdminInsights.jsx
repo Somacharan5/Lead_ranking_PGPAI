@@ -224,32 +224,29 @@ ${notesBlock}
 
 Notes may be in English, Hindi, or mixed. Analyze as-is.
 
-Return ONLY a valid JSON object with EXACTLY this structure — no preamble, no markdown fences:
+CRITICAL JSON RULES — failure to follow these will break parsing:
+- Return ONLY raw JSON. No markdown, no code fences, no preamble.
+- Every string value must use ONLY double quotes.
+- Any double-quote character INSIDE a string value must be escaped as \\"
+- No newlines inside string values — use a space instead.
+- Keep every string field under 80 characters.
+- topThemes: max 5 items. topObjections: max 5. objectionsBySource: max 5.
+- leadClassifications: only the 8 most interesting calls (hot/warm only — skip cold unless < 8 total).
+- followupFlags: max 5 items, urgency "today" first.
+
+Return this exact structure:
 {
-  "topThemes": [
-    { "theme": "max 6 words", "count": 0, "example": "short quote" }
-  ],
-  "topObjections": [
-    { "objection": "short phrase", "count": 0, "howHandled": "one sentence" }
-  ],
-  "objectionsBySource": [
-    { "source": "name", "topObjection": "short phrase", "count": 0 }
-  ],
+  "topThemes": [{ "theme": "max 6 words", "count": 0, "example": "brief" }],
+  "topObjections": [{ "objection": "short phrase", "count": 0, "howHandled": "one sentence" }],
+  "objectionsBySource": [{ "source": "name", "topObjection": "short phrase", "count": 0 }],
   "overallSentiment": "positive",
-  "sentimentReason": "1–2 sentence summary",
-  "leadClassifications": [
-    { "callIndex": 1, "interest": "hot", "reason": "one sentence" }
-  ],
-  "followupFlags": [
-    { "callIndex": 1, "action": "what to do", "urgency": "today", "signal": "exact phrase from notes" }
-  ]
+  "sentimentReason": "1-2 sentences",
+  "leadClassifications": [{ "callIndex": 1, "interest": "hot", "reason": "one sentence" }],
+  "followupFlags": [{ "callIndex": 1, "action": "what to do", "urgency": "today" }]
 }
 
-interest values: "hot" | "warm" | "cold"
-urgency values: "today" | "this-week" | "low"
-hot = clear interest, asked about fees/dates/next steps
-warm = some interest but hesitations or needs more time
-cold = disinterested, not reachable, or irrelevant profile`
+interest: "hot" | "warm" | "cold"
+urgency: "today" | "this-week" | "low"`
 
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -269,14 +266,35 @@ cold = disinterested, not reachable, or irrelevant profile`
   if (!response.ok) throw new Error(`API ${response.status}: ${response.statusText}`)
   const data = await response.json()
   const raw  = data.content.map(b => b.text || "").join("")
-  const text = raw.replace(/```json|```/g, "").trim()
-  try {
-    return JSON.parse(text)
-  } catch {
-    // Strip control characters and retry
-    const fixed = text.replace(/[\x00-\x1f]/g, " ")
-    return JSON.parse(fixed)
+  const text = raw.replace(/```json[\s\S]*?```|```/g, "").trim()
+  return robustJSONParse(text)
+}
+
+function robustJSONParse(text) {
+  // 1. Direct parse
+  try { return JSON.parse(text) } catch {}
+
+  // 2. Strip control characters
+  try { return JSON.parse(text.replace(/[\x00-\x1f\x7f]/g, " ")) } catch {}
+
+  // 3. Extract outermost { ... } block
+  const objMatch = text.match(/\{[\s\S]*\}/)
+  if (objMatch) {
+    try { return JSON.parse(objMatch[0]) } catch {}
+    try { return JSON.parse(objMatch[0].replace(/[\x00-\x1f\x7f]/g, " ")) } catch {}
   }
+
+  // 4. Truncate at last complete top-level field and close the object
+  // Walk backwards to find the last comma that separates top-level keys
+  const base = objMatch ? objMatch[0] : text
+  const lastComma = base.lastIndexOf(',"follow')  // followupFlags is always last
+  if (lastComma > 0) {
+    try {
+      return JSON.parse(base.slice(0, lastComma) + "}")
+    } catch {}
+  }
+
+  throw new Error("Could not parse AI response as JSON")
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -855,7 +873,6 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium text-gray-800">{row?.source || `Call ${f.callIndex}`}</div>
                       <div className="text-xs text-gray-500 mt-0.5">{f.action}</div>
-                      <div className="text-xs text-gray-400 italic mt-0.5">"{f.signal}"</div>
                     </div>
                     <span className="text-xs text-gray-400 border border-gray-200 rounded-full px-2 py-0.5 flex-shrink-0">
                       {row?.section || ""}
