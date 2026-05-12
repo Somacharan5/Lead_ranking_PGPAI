@@ -111,20 +111,39 @@ function colMeta(key) {
 // DATA LAYER
 // ─────────────────────────────────────────────────────────────────────────────
 
-export function buildSubStageMap(leadDumpRows = [], appStartRows = []) {
-  const map = {}
+// Returns { subStageMap, notesMap } — both keyed by last-10-digit phone number.
+// Lead Dump:      col C (idx 2) = Mobile, col W (idx 22) = SubStage, col AH (idx 33) = Notes
+// App Start Dump: col O (idx 14) = Mobile, col AV (idx 47) = SubStage, col BM (idx 64) = Notes
+export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
+  const subStageMap = {}, notesMap = {}
+
   leadDumpRows.slice(1).forEach(row => {
-    const p = phone10(row[2]);  const s = (row[22] || "").trim()
-    if (p && s) map[p] = s
+    const p = phone10(row[2])
+    if (!p) return
+    const sub  = (row[22] || "").trim()
+    const note = (row[33] || "").trim()
+    if (sub)  subStageMap[p] = sub
+    if (note) notesMap[p]    = note
   })
+
   appStartRows.slice(1).forEach(row => {
-    const p = phone10(row[14]); const s = (row[47] || "").trim()
-    if (p && s && !map[p]) map[p] = s
+    const p = phone10(row[14])
+    if (!p) return
+    const sub  = (row[47] || "").trim()
+    const note = (row[64] || "").trim()
+    if (sub  && !subStageMap[p]) subStageMap[p] = sub
+    if (note && !notesMap[p])    notesMap[p]    = note
   })
-  return map
+
+  return { subStageMap, notesMap }
 }
 
-export function parseCallsHistory(rawRows, targetDate, subStageMap = {}) {
+// Keep for backward compat
+export function buildSubStageMap(leadDumpRows = [], appStartRows = []) {
+  return buildLeadMaps(leadDumpRows, appStartRows).subStageMap
+}
+
+export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMap = {}) {
   const target = typeof targetDate === "string" ? new Date(targetDate) : targetDate
   return rawRows.slice(1).map(row => {
     const p = phone10(row[7])
@@ -133,7 +152,9 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}) {
       toNumber:     p,
       callType:     (row[8]  || "").trim(),
       callDate:     row[10],
-      notes:        (row[12] || "").trim(),
+      // Notes from Lead Dump / App Start Dump (joined by phone) — CRM notes written
+      // by the counsellor on the lead record, not the brief call-log note in col M.
+      notes:        notesMap[p] || (row[12] || "").trim(),
       audioUrl:     row[14] || "",
       stageType:    (row[15] || "").trim(),
       source:       (row[19] || "").trim(),
@@ -1093,11 +1114,11 @@ export default function AdminInsights() {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const [callsRaw, leadRaw, appRaw] = await Promise.all([
           fetchSheetData('Calls History', 'A:V'),
-          fetchSheetData('Lead Dump',     'A:W'),
-          fetchSheetData('App Start Dump','A:AV'),
+          fetchSheetData('Lead Dump',     'A:AH'),  // col AH (idx 33) = Notes
+          fetchSheetData('App Start Dump','A:BM'),  // col BM (idx 64) = Notes
         ])
-        const subMap = buildSubStageMap(leadRaw, appRaw)
-        const rows   = parseCallsHistory(callsRaw, new Date(date), subMap)
+        const { subStageMap, notesMap } = buildLeadMaps(leadRaw, appRaw)
+        const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap)
         if (!cancelled) setAllRows(rows)
       } catch (e) {
         if (!cancelled) setError("Failed to load: " + e.message)
