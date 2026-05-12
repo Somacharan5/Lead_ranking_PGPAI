@@ -201,9 +201,17 @@ function computeStats(rows) {
 async function fetchAIInsights(notesRows, counsellorName, dateStr) {
   if (!notesRows || notesRows.length === 0) return null
 
+  const clean = (s) => (s || "")
+    .replace(/[\r\n\t]+/g, " ")   // newlines/tabs → space
+    .replace(/"/g, "'")            // double quotes → single (prevents JSON breakage)
+    .replace(/\\/g, " ")           // backslashes → space
+    .replace(/[\x00-\x1f]/g, "")  // strip other control chars
+    .trim()
+    .slice(0, 250)
+
   const notesBlock = notesRows.map((r, i) =>
     `Call ${i + 1} (${r.section}, Source: ${r.source || "unknown"}, Stage: ${r.leadStage || "unknown"}, ` +
-    `Type: ${r.callType}, Duration: ${r.durationMins ? r.durationMins.toFixed(1) + "m" : "N/A"}): "${r.notes.slice(0, 300)}"`
+    `Type: ${r.callType}, Duration: ${r.durationMins ? r.durationMins.toFixed(1) + "m" : "N/A"}): "${clean(r.notes)}"`
   ).join("\n")
 
   const prompt =
@@ -260,8 +268,15 @@ cold = disinterested, not reachable, or irrelevant profile`
 
   if (!response.ok) throw new Error(`API ${response.status}: ${response.statusText}`)
   const data = await response.json()
-  const text = data.content.map(b => b.text || "").join("")
-  return JSON.parse(text.replace(/```json|```/g, "").trim())
+  const raw  = data.content.map(b => b.text || "").join("")
+  const text = raw.replace(/```json|```/g, "").trim()
+  try {
+    return JSON.parse(text)
+  } catch {
+    // Strip control characters and retry
+    const fixed = text.replace(/[\x00-\x1f]/g, " ")
+    return JSON.parse(fixed)
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
