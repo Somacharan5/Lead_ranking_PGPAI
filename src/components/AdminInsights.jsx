@@ -203,7 +203,7 @@ async function fetchAIInsights(notesRows, counsellorName, dateStr) {
 
   const notesBlock = notesRows.map((r, i) =>
     `Call ${i + 1} (${r.section}, Source: ${r.source || "unknown"}, Stage: ${r.leadStage || "unknown"}, ` +
-    `Type: ${r.callType}, Duration: ${r.durationMins ? r.durationMins.toFixed(1) + "m" : "N/A"}): "${r.notes}"`
+    `Type: ${r.callType}, Duration: ${r.durationMins ? r.durationMins.toFixed(1) + "m" : "N/A"}): "${r.notes.slice(0, 300)}"`
   ).join("\n")
 
   const prompt =
@@ -253,7 +253,7 @@ cold = disinterested, not reachable, or irrelevant profile`
     },
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
-      max_tokens: 1000,
+      max_tokens: 4096,
       messages: [{ role: "user", content: prompt }],
     }),
   })
