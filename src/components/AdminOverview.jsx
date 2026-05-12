@@ -6,10 +6,10 @@ import { triggerGlobalRefresh } from '../utils/refreshSignal'
 const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
 
 const SECTION_META = [
-  { key: 'freshLeads',    label: '🆕 Fresh',       color: 'green'  },
-  { key: 'followupLeads', label: '🔄 Followup',     color: 'orange' },
   { key: 'newAppStart',   label: '📝 New App',      color: 'purple' },
   { key: 'appFollowup',   label: '📞 App Followup', color: 'pink'   },
+  { key: 'followupLeads', label: '🔄 Followup',     color: 'orange' },
+  { key: 'freshLeads',    label: '🆕 Fresh',       color: 'green'  },
 ]
 
 const COLOR = {

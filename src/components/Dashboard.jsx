@@ -25,7 +25,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
-  const [activeTab, setActiveTab] = useState('fresh')
+  const [activeTab, setActiveTab] = useState('newapp')
   // Admin can drill in from the Overview page with a pre-selected counsellor
   const [selectedCounsellor, setSelectedCounsellor] = useState(
     location.state?.counsellor || initialCounsellor
@@ -299,22 +299,6 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
               <div className="grid grid-cols-2 md:grid-cols-4">
                 <TabButton
-                  active={activeTab === 'fresh'}
-                  onClick={() => setActiveTab('fresh')}
-                  label="🆕 Fresh"
-                  fullLabel="🆕 Fresh Leads"
-                  count={data.freshLeads.length}
-                  color="green"
-                />
-                <TabButton
-                  active={activeTab === 'followup'}
-                  onClick={() => setActiveTab('followup')}
-                  label="🔄 Followup"
-                  fullLabel="🔄 Followup Leads"
-                  count={data.followupLeads.length}
-                  color="orange"
-                />
-                <TabButton
                   active={activeTab === 'newapp'}
                   onClick={() => setActiveTab('newapp')}
                   label="📝 New App"
@@ -329,6 +313,22 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
                   fullLabel="📞 App Followups"
                   count={data.appFollowup.length}
                   color="pink"
+                />
+                <TabButton
+                  active={activeTab === 'followup'}
+                  onClick={() => setActiveTab('followup')}
+                  label="🔄 Followup"
+                  fullLabel="🔄 Followup Leads"
+                  count={data.followupLeads.length}
+                  color="orange"
+                />
+                <TabButton
+                  active={activeTab === 'fresh'}
+                  onClick={() => setActiveTab('fresh')}
+                  label="🆕 Fresh"
+                  fullLabel="🆕 Fresh Leads"
+                  count={data.freshLeads.length}
+                  color="green"
                 />
               </div>
             </div>
