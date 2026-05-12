@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getLeadsForCounsellor } from '../utils/leadProcessor'
 import { triggerGlobalRefresh } from '../utils/refreshSignal'
+import AdminInsights from './AdminInsights'
 
 const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
 
@@ -21,6 +22,7 @@ const COLOR = {
 
 export default function AdminOverview() {
   const navigate = useNavigate()
+  const [view, setView] = useState('overview')
   const [rows, setRows] = useState(
     COUNSELLORS.map(name => ({ name, data: null, loading: true, error: false }))
   )
@@ -124,6 +126,12 @@ export default function AdminOverview() {
               {refreshing ? '...' : '⚡ Force Refresh'}
             </button>
             <button
+              onClick={() => setView(v => v === 'insights' ? 'overview' : 'insights')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${view === 'insights' ? 'bg-violet-600 text-white' : 'bg-violet-50 hover:bg-violet-100 text-violet-700'}`}
+            >
+              📊 <span className="hidden sm:inline">Insights</span>
+            </button>
+            <button
               onClick={() => navigate('/admin')}
               className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition"
             >
@@ -139,7 +147,13 @@ export default function AdminOverview() {
         </div>
       </header>
 
-      <main className="max-w-[1400px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6">
+      {view === 'insights' && (
+        <div className="max-w-[1400px] mx-auto">
+          <AdminInsights />
+        </div>
+      )}
+
+      <main className={`max-w-[1400px] mx-auto px-3 md:px-6 py-4 md:py-6 space-y-4 md:space-y-6 ${view === 'insights' ? 'hidden' : ''}`}>
         {/* Summary bar */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-4 flex flex-wrap items-center gap-6">
           <div>
@@ -260,7 +274,7 @@ function CounsellorCard({ row, onDrillDown }) {
           <>
             <div className="text-center mb-4">
               <span className="text-4xl font-bold text-blue-700">{data.total}</span>
-              <span className="text-sm text-gray-500 ml-1">/ 200 leads</span>
+              <span className="text-sm text-gray-500 ml-1">/ 300 leads</span>
             </div>
             <div className="space-y-2">
               {SECTION_META.map(sec => {
