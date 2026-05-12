@@ -352,7 +352,12 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
               </div>
             </div>
 
-            <LeadTable leads={getCurrentLeads()} />
+            <LeadTable
+              key={activeTab}
+              leads={getCurrentLeads()}
+              defaultSortKey={activeTab === 'followup' || activeTab === 'appfollowup' ? 'priority' : 'score'}
+              defaultSortDir={activeTab === 'followup' || activeTab === 'appfollowup' ? 'asc' : 'desc'}
+            />
           </>
         )}
       </main>

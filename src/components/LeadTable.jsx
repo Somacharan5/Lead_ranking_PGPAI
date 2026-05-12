@@ -43,10 +43,10 @@ function sortValue(lead, key) {
   return lead[key] ?? ''
 }
 
-export default function LeadTable({ leads }) {
+export default function LeadTable({ leads, defaultSortKey = 'score', defaultSortDir = 'desc' }) {
   const [search, setSearch] = useState('')
-  const [sortKey, setSortKey] = useState('score')
-  const [sortDir, setSortDir] = useState('desc')
+  const [sortKey, setSortKey] = useState(defaultSortKey)
+  const [sortDir, setSortDir] = useState(defaultSortDir)
 
   const handleSort = (key) => {
     if (sortKey === key) {

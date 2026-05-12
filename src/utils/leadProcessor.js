@@ -226,23 +226,25 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
     }
   })
 
-  const mapped = actionable.map(row => ({
-    name: getCol(row, 'A'),
-    email: getCol(row, 'B'),
-    mobile: getCol(row, 'C'),
-    source: getCol(row, 'G'),
-    registeredOn: getCol(row, 'S'),
-    medium: getCol(row, 'H'),
-    counsellorLastActivity: getCol(row, 'AC'),
-    campaign: getCol(row, 'I'),
-    stage: getCol(row, 'V'),
-    subStage: getCol(row, 'W'),
-    notes: getCol(row, 'AH'),
-    score: parseFloat(getCol(row, 'BV')) || 0,
-    counsellor: getCol(row, 'U'),
-    priority: getCol(row, 'BW'),
-    category: 'Followup Lead',
-  }))
+  const mapped = actionable
+    .map(row => ({
+      name: getCol(row, 'A'),
+      email: getCol(row, 'B'),
+      mobile: getCol(row, 'C'),
+      source: getCol(row, 'G'),
+      registeredOn: getCol(row, 'S'),
+      medium: getCol(row, 'H'),
+      counsellorLastActivity: getCol(row, 'AC'),
+      campaign: getCol(row, 'I'),
+      stage: getCol(row, 'V'),
+      subStage: getCol(row, 'W'),
+      notes: getCol(row, 'AH'),
+      score: parseFloat(getCol(row, 'BV')) || 0,
+      counsellor: getCol(row, 'U'),
+      priority: getCol(row, 'BW'),
+      category: 'Followup Lead',
+    }))
+    .filter(lead => lead.priority !== 'Priority 5')
 
   return { leads: mapped, spokenTodayCount }
 }
@@ -343,23 +345,25 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
     }
   })
 
-  const mapped = actionable.map(row => ({
-    name: getCol(row, 'M'),
-    email: getCol(row, 'N'),
-    mobile: getCol(row, 'O'),
-    source: getCol(row, 'S'),
-    registeredOn: getCol(row, 'Q'),
-    medium: getCol(row, 'T'),
-    counsellorLastActivity: getCol(row, 'BG'),
-    campaign: getCol(row, 'U'),
-    stage: getCol(row, 'AU'),
-    subStage: getCol(row, 'AV'),
-    notes: getCol(row, 'BM'),
-    score: parseFloat(getCol(row, 'ET')) || 0,
-    counsellor: getCol(row, 'AR'),
-    priority: getCol(row, 'EU'),
-    category: 'App Followup',
-  }))
+  const mapped = actionable
+    .map(row => ({
+      name: getCol(row, 'M'),
+      email: getCol(row, 'N'),
+      mobile: getCol(row, 'O'),
+      source: getCol(row, 'S'),
+      registeredOn: getCol(row, 'Q'),
+      medium: getCol(row, 'T'),
+      counsellorLastActivity: getCol(row, 'BG'),
+      campaign: getCol(row, 'U'),
+      stage: getCol(row, 'AU'),
+      subStage: getCol(row, 'AV'),
+      notes: getCol(row, 'BM'),
+      score: parseFloat(getCol(row, 'ET')) || 0,
+      counsellor: getCol(row, 'AR'),
+      priority: getCol(row, 'EU'),
+      category: 'App Followup',
+    }))
+    .filter(lead => lead.priority !== 'Priority 5')
 
   return { leads: mapped, spokenTodayCount }
 }
