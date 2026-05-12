@@ -1,34 +1,40 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+  PieChart, Pie, Cell, Sector,
+} from "recharts"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MAIN_COUNSELLORS = [
-  { key: "Jasmeet Kaur",   short: "Jasmeet" },
-  { key: "Komal Pandey",   short: "Komal"   },
-  { key: "Prerna Kaushik", short: "Prerna"  },
+  { key: "Jasmeet Kaur",   short: "Jasmeet", color: "#3b82f6", bg: "#eff6ff", ring: "#93c5fd" },
+  { key: "Komal Pandey",   short: "Komal",   color: "#8b5cf6", bg: "#f5f3ff", ring: "#c4b5fd" },
+  { key: "Prerna Kaushik", short: "Prerna",  color: "#ec4899", bg: "#fdf2f8", ring: "#f9a8d4" },
 ]
 const ALL_COLS = [
   ...MAIN_COUNSELLORS,
-  { key: "Others", short: "Others" },
+  { key: "Others", short: "Others", color: "#94a3b8", bg: "#f8fafc", ring: "#cbd5e1" },
 ]
 
-// Calls History Col D raw values → normalized key
 const NAME_MAP = {
-  "Jasmeet Kaur": "Jasmeet Kaur",
-  "Jasmeet":      "Jasmeet Kaur",
-  "KOMAL":        "Komal Pandey",
-  "Komal":        "Komal Pandey",
-  "Prerna":       "Prerna Kaushik",
+  "Jasmeet Kaur":   "Jasmeet Kaur",
+  "Jasmeet":        "Jasmeet Kaur",
+  "KOMAL":          "Komal Pandey",
+  "Komal":          "Komal Pandey",
+  "Komal Pandey":   "Komal Pandey",
+  "Prerna":         "Prerna Kaushik",
+  "Prerna Kaushik": "Prerna Kaushik",
+  "PRERNA":         "Prerna Kaushik",
 }
 
 const SECTIONS = [
-  { key: "all",    label: "All sections",        val: null             },
-  { key: "appFU",  label: "App Start Followup",  val: "App Followup"  },
-  { key: "appNew", label: "App Start New",        val: "App Start New" },
-  { key: "leadFU", label: "Followup Leads",       val: "Followup Lead" },
-  { key: "fresh",  label: "Fresh Leads",           val: "Fresh Lead"   },
+  { key: "all",    label: "All sections",       val: null            },
+  { key: "appFU",  label: "App Start Followup", val: "App Followup"  },
+  { key: "appNew", label: "App Start New",       val: "App Start New" },
+  { key: "leadFU", label: "Followup Leads",      val: "Followup Lead" },
+  { key: "fresh",  label: "Fresh Leads",          val: "Fresh Lead"   },
 ]
 
 const STAGE_ORDER = [
@@ -36,14 +42,32 @@ const STAGE_ORDER = [
   "Not Eligible", "Untouched", "Intent dropped",
 ]
 
-const URGENCY = {
-  today:      { label: "Today",     bg: "#fcebeb", color: "#a32d2d" },
-  "this-week":{ label: "This week", bg: "#faeeda", color: "#633806" },
-  low:        { label: "Low",       bg: "#f1efe8", color: "#444441" },
+const STAGE_COLORS = {
+  "Counseled":                "#22c55e",
+  "No Contact Established":   "#f59e0b",
+  "Not interested":           "#ef4444",
+  "Not Eligible":             "#6b7280",
+  "Untouched":                "#3b82f6",
+  "Intent dropped":           "#8b5cf6",
 }
 
-const SENTIMENT_COLOR = { positive:"#3b6d11", mixed:"#854f0b", negative:"#a32d2d" }
-const SENTIMENT_BG    = { positive:"#eaf3de", mixed:"#faeeda", negative:"#fcebeb" }
+const CALL_TYPE_COLORS = {
+  Outgoing: "#3b82f6",
+  Incoming: "#22c55e",
+  Missed:   "#ef4444",
+  Rejected: "#f97316",
+}
+
+const URGENCY = {
+  today:       { label: "Today",     bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"   },
+  "this-week": { label: "This week", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
+  low:         { label: "Low",       bg: "bg-gray-50",   text: "text-gray-600",   border: "border-gray-200"  },
+}
+const SENTIMENT = {
+  positive: { bg: "bg-green-50",  text: "text-green-700",  label: "Positive" },
+  mixed:    { bg: "bg-amber-50",  text: "text-amber-700",  label: "Mixed"    },
+  negative: { bg: "bg-red-50",    text: "text-red-700",    label: "Negative" },
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -57,8 +81,8 @@ function normalizeName(raw) {
 
 function inferSection(stageType, leadStage) {
   const isUntouched = (leadStage || "").trim() === "Untouched"
-  if (stageType === "Lead")                                   return isUntouched ? "Fresh Lead"    : "Followup Lead"
-  if (stageType === "App Start" || stageType === "Paid App")  return isUntouched ? "App Start New" : "App Followup"
+  if (stageType === "Lead")                                  return isUntouched ? "Fresh Lead"    : "Followup Lead"
+  if (stageType === "App Start" || stageType === "Paid App") return isUntouched ? "App Start New" : "App Followup"
   return "Unknown"
 }
 
@@ -79,54 +103,43 @@ function sameDay(d1, d2) {
 function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
 function phone10(v) { return String(v || "").replace(/\D/g, "").slice(-10) }
 
+function colMeta(key) {
+  return ALL_COLS.find(c => c.key === key) || { color: "#94a3b8", bg: "#f8fafc", short: key }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // DATA LAYER
 // ─────────────────────────────────────────────────────────────────────────────
 
-/**
- * Build phone → subStage lookup map from Lead Dump + App Start Dump rows.
- * Lead Dump:     Col C (idx 2) = Mobile, Col W (idx 22) = Lead Sub Stage
- * App Start Dump: Col O (idx 14) = Mobile, Col AV (idx 47) = Application Sub Stage
- */
 export function buildSubStageMap(leadDumpRows = [], appStartRows = []) {
   const map = {}
   leadDumpRows.slice(1).forEach(row => {
-    const p = phone10(row[2])
-    const s = (row[22] || "").trim()
+    const p = phone10(row[2]);  const s = (row[22] || "").trim()
     if (p && s) map[p] = s
   })
   appStartRows.slice(1).forEach(row => {
-    const p = phone10(row[14])
-    const s = (row[47] || "").trim()
+    const p = phone10(row[14]); const s = (row[47] || "").trim()
     if (p && s && !map[p]) map[p] = s
   })
   return map
 }
 
-/**
- * Parse Calls History raw rows into call objects.
- * Calls History columns used:
- *   D=3  Employee Name       H=7  To Number      I=8  Call Type
- *   K=10 Call Date           M=12 Notes          O=14 Audio URL
- *   P=15 Stage (Lead/App)    T=19 Source         U=20 Lead/App Stage
- *   V=21 Call Duration Mins
- */
 export function parseCallsHistory(rawRows, targetDate, subStageMap = {}) {
   const target = typeof targetDate === "string" ? new Date(targetDate) : targetDate
   return rawRows.slice(1).map(row => {
     const p = phone10(row[7])
     return {
-      empName:     normalizeName(row[3]),
-      toNumber:    p,
-      callType:    (row[8]  || "").trim(),
-      callDate:    row[10],
-      notes:       (row[12] || "").trim(),
-      audioUrl:    row[14] || "",
-      stageType:   (row[15] || "").trim(),
-      source:      (row[19] || "").trim(),
-      leadStage:   (row[20] || "").trim(),
+      empName:      normalizeName(row[3]),
+      toNumber:     p,
+      callType:     (row[8]  || "").trim(),
+      callDate:     row[10],
+      notes:        (row[12] || "").trim(),
+      audioUrl:     row[14] || "",
+      stageType:    (row[15] || "").trim(),
+      source:       (row[19] || "").trim(),
+      leadStage:    (row[20] || "").trim(),
       durationMins: parseFloat(row[21]) || 0,
-      subStage:    subStageMap[p] || "",
+      subStage:     subStageMap[p] || "",
     }
   })
   .filter(r => r.empName !== null)
@@ -134,7 +147,6 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}) {
   .map(r => ({ ...r, section: inferSection(r.stageType, r.leadStage) }))
 }
 
-/** Compute pivot stats from a set of call rows */
 function computeStats(rows) {
   if (!rows || rows.length === 0) return null
   const out  = rows.filter(r => r.callType === "Outgoing")
@@ -219,7 +231,7 @@ cold = disinterested, not reachable, or irrelevant profile`
       "anthropic-dangerous-direct-browser-access": "true",
     },
     body: JSON.stringify({
-      model: "claude-sonnet-4-20250514",
+      model: "claude-sonnet-4-6",
       max_tokens: 1000,
       messages: [{ role: "user", content: prompt }],
     }),
@@ -232,37 +244,247 @@ cold = disinterested, not reachable, or irrelevant profile`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SHARED STYLES
+// SHARED UI PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
-const ss = {
-  sel: {
-    border: "0.5px solid var(--color-border-secondary)", borderRadius: 6, padding: "5px 8px",
-    fontSize: 12, background: "var(--color-background-primary)",
-    color: "var(--color-text-primary)", fontFamily: "var(--font-sans)",
-  },
-  tabBtn: (a) => ({
-    padding: "8px 14px", border: "none", background: "none", cursor: "pointer",
-    fontSize: 13, color: a ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-    borderBottom: a ? "2px solid var(--color-text-primary)" : "2px solid transparent",
-    fontWeight: a ? 500 : 400, fontFamily: "var(--font-sans)", whiteSpace: "nowrap",
-  }),
-  stBtn: (a) => ({
-    padding: "5px 10px", border: "0.5px solid",
-    borderColor: a ? "var(--color-border-secondary)" : "var(--color-border-tertiary)",
-    borderRadius: 6, fontSize: 12,
-    background: a ? "var(--color-background-secondary)" : "none",
-    cursor: "pointer", color: a ? "var(--color-text-primary)" : "var(--color-text-secondary)",
-    fontFamily: "var(--font-sans)",
-  }),
-  card: {
-    border: "0.5px solid var(--color-border-tertiary)",
-    borderRadius: 12, padding: 14,
-  },
-  badge: (bg, color) => ({
-    background: bg, color, fontSize: 11, fontWeight: 500,
-    padding: "2px 8px", borderRadius: 20, display: "inline-block",
-  }),
+function KPICard({ label, value, sub, color, icon }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-1">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium text-gray-500 uppercase tracking-wide">{label}</span>
+        {icon && <span className="text-lg">{icon}</span>}
+      </div>
+      <div className="text-3xl font-bold" style={{ color: color || "#1e293b" }}>{value ?? "—"}</div>
+      {sub && <div className="text-xs text-gray-400 mt-1">{sub}</div>}
+    </div>
+  )
+}
+
+function ProgressBar({ pct, color }) {
+  return (
+    <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+      <div className="h-full rounded-full transition-all duration-500"
+           style={{ width: `${Math.min(pct || 0, 100)}%`, background: color }} />
+    </div>
+  )
+}
+
+function StatChip({ label, value, color }) {
+  return (
+    <div className="flex items-center justify-between py-1">
+      <span className="text-xs text-gray-500">{label}</span>
+      <span className="text-xs font-semibold" style={{ color }}>{value ?? "—"}</span>
+    </div>
+  )
+}
+
+const CustomTooltip = ({ active, payload, label }) => {
+  if (!active || !payload?.length) return null
+  return (
+    <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+      <div className="font-semibold text-gray-700 mb-2">{label}</div>
+      {payload.map(p => (
+        <div key={p.name} className="flex items-center gap-2 py-0.5">
+          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+          <span className="text-gray-600">{p.name}:</span>
+          <span className="font-semibold text-gray-800">{p.value}</span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+// Active shape for donut chart hover
+const renderActiveShape = (props) => {
+  const { cx, cy, innerRadius, outerRadius, startAngle, endAngle, fill, payload, value, percent } = props
+  return (
+    <g>
+      <text x={cx} y={cy - 8} textAnchor="middle" fill="#1e293b" fontSize={22} fontWeight={700}>{value}</text>
+      <text x={cx} y={cy + 14} textAnchor="middle" fill="#94a3b8" fontSize={11}>{payload.name}</text>
+      <text x={cx} y={cy + 28} textAnchor="middle" fill="#94a3b8" fontSize={11}>{(percent * 100).toFixed(0)}%</text>
+      <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 6}
+              startAngle={startAngle} endAngle={endAngle} fill={fill} />
+      <Sector cx={cx} cy={cy} innerRadius={innerRadius - 4} outerRadius={innerRadius - 2}
+              startAngle={startAngle} endAngle={endAngle} fill={fill} />
+    </g>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// CHARTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function CallsBarChart({ allRows }) {
+  const data = MAIN_COUNSELLORS.map(c => {
+    const rows = allRows.filter(r => r.empName === c.key)
+    const out  = rows.filter(r => r.callType === "Outgoing")
+    const conn = out.filter(r => r.durationMins > 0)
+    return { name: c.short, Outgoing: out.length, Connected: conn.length, Missed: rows.filter(r => r.callType === "Missed" || r.callType === "Rejected").length }
+  })
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Counsellor</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data} barGap={4} barCategoryGap="30%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+          <Bar dataKey="Outgoing"  fill="#3b82f6" radius={[4,4,0,0]} />
+          <Bar dataKey="Connected" fill="#22c55e" radius={[4,4,0,0]} />
+          <Bar dataKey="Missed"    fill="#fca5a5" radius={[4,4,0,0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function CallTypeDonut({ rows }) {
+  const [activeIdx, setActiveIdx] = useState(0)
+  const types = ["Outgoing", "Incoming", "Missed", "Rejected"]
+  const data = types.map(t => ({ name: t, value: rows.filter(r => r.callType === t).length })).filter(d => d.value > 0)
+  if (!data.length) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="text-sm font-semibold text-gray-800 mb-2">Call Type Breakdown</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <PieChart>
+          <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
+               activeIndex={activeIdx} activeShape={renderActiveShape}
+               onMouseEnter={(_, i) => setActiveIdx(i)}
+               dataKey="value" paddingAngle={3}>
+            {data.map((d) => (
+              <Cell key={d.name} fill={CALL_TYPE_COLORS[d.name] || "#94a3b8"} />
+            ))}
+          </Pie>
+        </PieChart>
+      </ResponsiveContainer>
+      <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-1">
+        {data.map(d => (
+          <div key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+            <span className="w-2 h-2 rounded-full" style={{ background: CALL_TYPE_COLORS[d.name] || "#94a3b8" }} />
+            {d.name} ({d.value})
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StageBarChart({ rows }) {
+  const allStages = useMemo(() => {
+    const set = new Set(rows.map(r => r.leadStage || "Unknown"))
+    return [
+      ...STAGE_ORDER.filter(s => set.has(s)),
+      ...[...set].filter(s => !STAGE_ORDER.includes(s) && s !== "Unknown").sort(),
+    ]
+  }, [rows])
+
+  const data = allStages.map(s => ({
+    name: s.length > 22 ? s.slice(0, 20) + "…" : s,
+    fullName: s,
+    value: rows.filter(r => (r.leadStage || "Unknown") === s).length,
+    color: STAGE_COLORS[s] || "#94a3b8",
+  })).sort((a, b) => b.value - a.value)
+
+  const max = Math.max(...data.map(d => d.value), 1)
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="text-sm font-semibold text-gray-800 mb-4">Stage Breakdown</div>
+      <div className="space-y-3">
+        {data.map(d => (
+          <div key={d.fullName}>
+            <div className="flex justify-between items-center mb-1">
+              <span className="text-xs text-gray-600 truncate max-w-[180px]" title={d.fullName}>{d.fullName}</span>
+              <span className="text-xs font-semibold text-gray-800 ml-2 flex-shrink-0">{d.value}</span>
+            </div>
+            <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-700"
+                   style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function SourceBarChart({ rows }) {
+  const data = useMemo(() => {
+    const map = {}
+    rows.forEach(r => { if (r.source) map[r.source] = (map[r.source] || 0) + 1 })
+    return Object.entries(map)
+      .map(([name, value]) => ({ name: name.length > 14 ? name.slice(0, 12) + "…" : name, fullName: name, value }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 8)
+  }, [rows])
+
+  if (!data.length) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Source</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <BarChart data={data} barCategoryGap="35%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <XAxis dataKey="name" tick={{ fontSize: 11, fill: "#64748b" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip
+            formatter={(v, _, p) => [v, p.payload.fullName]}
+            content={({ active, payload, label }) => {
+              if (!active || !payload?.length) return null
+              return (
+                <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
+                  <div className="font-semibold text-gray-700 mb-1">{payload[0]?.payload?.fullName || label}</div>
+                  <div className="text-gray-600">{payload[0]?.value} calls</div>
+                </div>
+              )
+            }}
+            cursor={{ fill: "#f8fafc" }}
+          />
+          <Bar dataKey="value" name="Calls" radius={[4,4,0,0]}>
+            {data.map((_, i) => (
+              <Cell key={i} fill={`hsl(${217 + i * 22}, 70%, ${55 + i * 3}%)`} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
+}
+
+function ConnectedBySection({ rows }) {
+  const sections = ["App Followup", "App Start New", "Followup Lead", "Fresh Lead"]
+  const data = sections.map(sec => {
+    const r = rows.filter(x => x.section === sec)
+    const out  = r.filter(x => x.callType === "Outgoing")
+    const conn = out.filter(x => x.durationMins > 0)
+    return {
+      name: sec.replace("App ", "App\n").replace("Followup", "FU").replace("Fresh Lead", "Fresh"),
+      fullName: sec,
+      Outgoing: out.length,
+      Connected: conn.length,
+    }
+  }).filter(d => d.Outgoing > 0)
+
+  if (!data.length) return null
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="text-sm font-semibold text-gray-800 mb-4">Connected by Section</div>
+      <ResponsiveContainer width="100%" height={180}>
+        <BarChart data={data} barGap={3} barCategoryGap="30%">
+          <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+          <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#64748b" }} axisLine={false} tickLine={false} />
+          <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+          <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
+          <Bar dataKey="Outgoing"  fill="#93c5fd" radius={[3,3,0,0]} />
+          <Bar dataKey="Connected" fill="#22c55e" radius={[3,3,0,0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -272,7 +494,7 @@ const ss = {
 function PivotTable({ rows }) {
   const [stageOpen, setStageOpen] = useState({})
 
-  const allS = computeStats(rows)
+  const allS  = computeStats(rows)
   const byCol = useMemo(() => {
     const m = {}
     ALL_COLS.forEach(c => { m[c.key] = computeStats(rows.filter(r => r.empName === c.key)) })
@@ -288,144 +510,108 @@ function PivotTable({ rows }) {
   }, [rows])
 
   if (!allS) return (
-    <div style={{ textAlign:"center", padding:40, color:"var(--color-text-secondary)", fontSize:13 }}>
-      No calls for the selected filters.
-    </div>
+    <div className="text-center py-12 text-gray-400 text-sm">No calls for the selected filters.</div>
   )
 
-  const TH = ({ children, left }) => (
-    <th style={{
-      padding:"9px 12px", fontSize:11, fontWeight:500,
-      color:"var(--color-text-secondary)", background:"var(--color-background-secondary)",
-      borderBottom:"0.5px solid var(--color-border-secondary)",
-      borderRight:"0.5px solid var(--color-border-tertiary)",
-      textAlign: left ? "left" : "right", whiteSpace:"nowrap",
-    }}>{children}</th>
+  const TH = ({ children, right }) => (
+    <th className={`px-4 py-3 text-xs font-semibold text-gray-500 bg-gray-50 border-b border-gray-200 whitespace-nowrap ${right ? "text-right" : "text-left"}`}>
+      {children}
+    </th>
   )
 
-  const TD = ({ val, bold, dim, indent=0, bg }) => (
-    <td style={{
-      padding:"7px 12px", paddingLeft: 12 + indent*14, fontSize:12,
-      fontWeight: bold ? 500 : 400,
-      color: dim || val === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-      borderBottom:"0.5px solid var(--color-border-tertiary)",
-      borderRight:"0.5px solid var(--color-border-tertiary)",
-      background: bg || "transparent",
-    }}>{val ?? "—"}</td>
-  )
-
-  const TDN = ({ val, bold, bg }) => (
-    <td style={{
-      padding:"7px 12px", textAlign:"right", fontSize:12,
-      fontWeight: bold ? 500 : 400,
-      color: (!val && val !== 0) || val === 0 ? "var(--color-text-tertiary)" : "var(--color-text-primary)",
-      borderBottom:"0.5px solid var(--color-border-tertiary)",
-      borderRight:"0.5px solid var(--color-border-tertiary)",
-      background: bg || "transparent",
-    }}>{val ?? "—"}</td>
-  )
-
-  const DivRow = ({ label, color }) => (
+  const SectionRow = ({ label, color }) => (
     <tr>
-      <td colSpan={6} style={{
-        padding:"5px 12px", fontSize:11, fontWeight:500, color,
-        background: color + "14",
-        borderTop:"0.5px solid var(--color-border-tertiary)",
-        borderBottom:"0.5px solid var(--color-border-tertiary)",
-        letterSpacing:".3px",
-      }}>{label}</td>
+      <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider"
+          style={{ background: color + "12", color, borderTop: `1px solid ${color}30` }}>
+        {label}
+      </td>
     </tr>
   )
 
-  const Row = ({ label, getV, bold, dim, indent=0 }) => (
-    <tr>
-      <TD val={label} bold={bold} dim={dim} indent={indent} />
-      <TDN val={allS ? getV(allS) : null} bold={bold} />
-      {ALL_COLS.map(c => <TDN key={c.key} val={byCol[c.key] ? getV(byCol[c.key]) : 0} bold={bold} />)}
+  const DataRow = ({ label, getV, bold, indent = 0 }) => (
+    <tr className="hover:bg-gray-50 transition-colors">
+      <td className="px-4 py-2.5 text-sm border-b border-gray-100"
+          style={{ paddingLeft: 16 + indent * 16, fontWeight: bold ? 600 : 400, color: indent ? "#6b7280" : "#1e293b" }}>
+        {label}
+      </td>
+      <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+        {allS ? getV(allS) ?? "—" : "—"}
+      </td>
+      {ALL_COLS.map(c => (
+        <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
+            style={{ color: byCol[c.key] ? c.color : "#d1d5db", fontWeight: bold ? 600 : 400 }}>
+          {byCol[c.key] ? (getV(byCol[c.key]) ?? "—") : "0"}
+        </td>
+      ))}
     </tr>
   )
 
   return (
-    <div style={{ overflowX:"auto" }}>
-      <table style={{ width:"100%", borderCollapse:"collapse", minWidth:580 }}>
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm min-w-[600px]">
         <thead>
           <tr>
-            <TH left>Metric</TH>
-            <TH>Total</TH>
-            {ALL_COLS.map(c => <TH key={c.key}>{c.short}</TH>)}
+            <TH>Metric</TH>
+            <TH right>Total</TH>
+            {ALL_COLS.map(c => <TH key={c.key} right>{c.short}</TH>)}
           </tr>
         </thead>
         <tbody>
-          <DivRow label="Volume" color="#185fa5" />
-          <Row label="Total calls"         getV={s=>s.total}    bold />
-          <Row label="Outgoing"             getV={s=>s.outgoing} />
-          <Row label="Incoming"             getV={s=>s.incoming} />
-          <Row label="Missed / Rejected"    getV={s=>s.missed}   />
-          <Row label="Unique numbers dialled" getV={s=>s.unique} />
+          <SectionRow label="Volume" color="#3b82f6" />
+          <DataRow label="Total calls"            getV={s=>s.total}    bold />
+          <DataRow label="Outgoing"               getV={s=>s.outgoing} />
+          <DataRow label="Incoming"               getV={s=>s.incoming} />
+          <DataRow label="Missed / Rejected"      getV={s=>s.missed}   />
+          <DataRow label="Unique numbers dialled" getV={s=>s.unique}   />
 
-          <DivRow label="Connection quality" color="#0f6e56" />
-          <Row label="Connected"            getV={s=>s.connected} bold />
-          <Row label="Connected %"          getV={s=>s.connPct !== null ? s.connPct+"%" : "—"} />
+          <SectionRow label="Connection quality" color="#22c55e" />
+          <DataRow label="Connected"   getV={s=>s.connected} bold />
+          <DataRow label="Connected %" getV={s=>s.connPct !== null ? s.connPct + "%" : "—"} />
 
-          <DivRow label="Stage breakdown (click to expand substages)" color="#854f0b" />
+          <SectionRow label="Stage breakdown" color="#f59e0b" />
           {allStages.map(stage => {
-            const isOpen = stageOpen[stage]
-            const bg = isOpen ? "var(--color-background-secondary)" : "transparent"
-
-            // Collect all substages for this stage across all rows
-            const subMap = {}
+            const isOpen   = stageOpen[stage]
+            const subMap   = {}
             rows.filter(r => (r.leadStage || "Unknown") === stage && r.subStage).forEach(r => {
               subMap[r.subStage] = (subMap[r.subStage] || 0) + 1
             })
-            const subKeys = Object.entries(subMap).sort((a,b)=>b[1]-a[1]).map(([k])=>k)
+            const subKeys    = Object.entries(subMap).sort((a,b)=>b[1]-a[1]).map(([k])=>k)
             const hasSubStages = subKeys.length > 0
-
+            const stageColor   = STAGE_COLORS[stage] || "#94a3b8"
             return (
               <tbody key={stage}>
-                <tr style={{ cursor: hasSubStages ? "pointer" : "default" }}
+                <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => hasSubStages && setStageOpen(p => ({...p,[stage]:!p[stage]}))}>
-                  <td style={{
-                    padding:"7px 12px", fontSize:12, fontWeight:500,
-                    color:"var(--color-text-primary)", background:bg,
-                    borderBottom:"0.5px solid var(--color-border-tertiary)",
-                    borderRight:"0.5px solid var(--color-border-tertiary)",
-                    userSelect:"none",
-                  }}>
-                    {hasSubStages && (
-                      <span style={{ fontSize:9, marginRight:7, opacity:.55 }}>
-                        {isOpen ? "▼" : "▶"}
-                      </span>
-                    )}
-                    {stage}
-                    {!hasSubStages && (
-                      <span style={{ fontSize:10, color:"var(--color-text-tertiary)", marginLeft:6 }}>
-                        (no substage data)
-                      </span>
-                    )}
+                  <td className="px-4 py-2.5 text-sm border-b border-gray-100 font-medium" style={{ color: "#1e293b" }}>
+                    <span className="inline-flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stageColor }} />
+                      {stage}
+                      {hasSubStages && (
+                        <span className="text-gray-400 text-xs">{isOpen ? "▲" : "▼"}</span>
+                      )}
+                    </span>
                   </td>
-                  <TDN val={allS?.stages[stage] ?? 0} bold bg={bg} />
+                  <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+                    {allS?.stages[stage] ?? 0}
+                  </td>
                   {ALL_COLS.map(c => (
-                    <TDN key={c.key} val={byCol[c.key]?.stages[stage] ?? 0} bg={bg} />
+                    <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
+                        style={{ color: c.color }}>
+                      {byCol[c.key]?.stages[stage] ?? 0}
+                    </td>
                   ))}
                 </tr>
-
                 {isOpen && subKeys.map(sub => {
-                  const totSub = rows.filter(r =>
-                    (r.leadStage||"Unknown")===stage && r.subStage===sub
-                  ).length
+                  const tot = rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub).length
                   return (
-                    <tr key={sub} style={{ background:"var(--color-background-secondary)" }}>
-                      <TD val={sub} dim indent={2}
-                          bg="var(--color-background-secondary)" />
-                      <TDN val={totSub} bg="var(--color-background-secondary)" />
+                    <tr key={sub} className="bg-gray-50">
+                      <td className="py-2 text-xs text-gray-500 border-b border-gray-100" style={{ paddingLeft: 40 }}>
+                        {sub}
+                      </td>
+                      <td className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600">{tot}</td>
                       {ALL_COLS.map(c => {
-                        const v = rows.filter(r =>
-                          r.empName===c.key &&
-                          (r.leadStage||"Unknown")===stage &&
-                          r.subStage===sub
-                        ).length
-                        return <TDN key={c.key} val={v||0}
-                                    bg="var(--color-background-secondary)" />
+                        const v = rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub).length
+                        return <td key={c.key} className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500">{v||0}</td>
                       })}
                     </tr>
                   )
@@ -434,14 +620,12 @@ function PivotTable({ rows }) {
             )
           })}
 
-          <DivRow label="Duration (outgoing calls only)" color="#533ab7" />
-          <Row label="Total (mins)"                  getV={s=>s.totalDur} bold />
-          <Row label="Avg per connected call (mins)"  getV={s=>s.avgDur}  />
+          <SectionRow label="Duration (outgoing only)" color="#8b5cf6" />
+          <DataRow label="Total (mins)"                  getV={s=>s.totalDur} bold />
+          <DataRow label="Avg per connected call (mins)"  getV={s=>s.avgDur}  />
         </tbody>
       </table>
-      <p style={{ fontSize:11, color:"var(--color-text-tertiary)", marginTop:8 }}>
-        Substage data from Lead Dump Col W joined by phone number. "Others" = Leena, AMANDEEP KAUR, etc.
-      </p>
+      <p className="text-xs text-gray-400 mt-3 px-4">Substage data from Lead Dump joined by phone number.</p>
     </div>
   )
 }
@@ -451,15 +635,13 @@ function PivotTable({ rows }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AIInsightsPanel({ rows, counsellorName, dateStr }) {
-  const [status, setStatus]   = useState("idle")  // idle | loading | done | error | no-notes
+  const [status,   setStatus]   = useState("idle")
   const [insights, setInsights] = useState(null)
-  const [errMsg,  setErrMsg]  = useState("")
+  const [errMsg,   setErrMsg]   = useState("")
   const cacheRef = useRef({})
 
-  const notesRows = useMemo(() =>
-    rows.filter(r => r.notes && r.notes.trim().length > 5), [rows])
-
-  const cacheKey = `${counsellorName}__${dateStr}`
+  const notesRows = useMemo(() => rows.filter(r => r.notes && r.notes.trim().length > 5), [rows])
+  const cacheKey  = `${counsellorName}__${dateStr}`
 
   const run = useCallback(async () => {
     if (notesRows.length === 0) { setStatus("no-notes"); return }
@@ -474,65 +656,53 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
       setInsights(result)
       setStatus("done")
     } catch (e) {
-      setErrMsg(e.message)
-      setStatus("error")
+      setErrMsg(e.message); setStatus("error")
     }
   }, [notesRows, cacheKey, counsellorName, dateStr])
 
-  // No notes state
   if (status === "idle" && notesRows.length === 0) return (
-    <div style={{...ss.card, textAlign:"center", padding:32, color:"var(--color-text-secondary)"}}>
-      <div style={{fontSize:15, marginBottom:8}}>No call notes on this date</div>
-      <div style={{fontSize:12}}>
-        {rows.length} calls found but no notes (Col M in Calls History). 
-        Encourage counsellors to add notes during calls.
-      </div>
+    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+      <div className="text-3xl mb-3">📭</div>
+      <div className="text-sm font-medium text-gray-700 mb-1">No call notes on this date</div>
+      <div className="text-xs text-gray-400">{rows.length} calls found but none have notes (Col M in Calls History).</div>
     </div>
   )
 
-  // Idle — show launch button
   if (status === "idle") return (
-    <div style={{...ss.card, textAlign:"center", padding:32}}>
-      <div style={{fontSize:14, color:"var(--color-text-primary)", marginBottom:6}}>
-        AI Insights ready
+    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+      <div className="text-3xl mb-3">✦</div>
+      <div className="text-sm font-semibold text-gray-800 mb-1">AI Insights ready</div>
+      <div className="text-xs text-gray-500 mb-5">
+        {notesRows.length} calls with notes · Claude will analyse themes, objections, interest levels &amp; follow-up flags
       </div>
-      <div style={{fontSize:12, color:"var(--color-text-secondary)", marginBottom:16}}>
-        {notesRows.length} calls with notes · Claude will analyze themes, objections,
-        interest levels & follow-up flags
-      </div>
-      <button onClick={run} style={{
-        background:"var(--color-text-primary)", color:"var(--color-background-primary)",
-        border:"none", borderRadius:8, padding:"9px 22px", fontSize:13,
-        fontFamily:"var(--font-sans)", cursor:"pointer", fontWeight:500,
-      }}>
+      <button onClick={run}
+              className="px-6 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
         ✦ Analyse with Claude
       </button>
     </div>
   )
 
   if (status === "loading") return (
-    <div style={{...ss.card, textAlign:"center", padding:40, color:"var(--color-text-secondary)"}}>
-      <div style={{fontSize:13}}>Analyzing {notesRows.length} call notes…</div>
-      <div style={{fontSize:11, marginTop:6, color:"var(--color-text-tertiary)"}}>
-        Claude is reading themes, objections and classifying each lead
-      </div>
+    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+      <div className="inline-block w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
+      <div className="text-sm text-gray-600">Analysing {notesRows.length} call notes…</div>
+      <div className="text-xs text-gray-400 mt-1">Claude is reading themes, objections and classifying leads</div>
     </div>
   )
 
   if (status === "error") return (
-    <div style={{...ss.card, padding:20, borderColor:"#ffa39e"}}>
-      <div style={{color:"#a32d2d", fontSize:13, marginBottom:8}}>AI call failed: {errMsg}</div>
-      <button onClick={run} style={{...ss.stBtn(false), cursor:"pointer"}}>Retry</button>
+    <div className="bg-red-50 border border-red-200 rounded-xl p-6">
+      <div className="text-sm text-red-700 font-medium mb-2">AI call failed: {errMsg}</div>
+      <button onClick={run} className="text-xs text-red-600 underline">Retry</button>
     </div>
   )
 
   if (status === "no-notes") return (
-    <div style={{...ss.card, textAlign:"center", padding:32, color:"var(--color-text-secondary)"}}>
-      <div style={{fontSize:13}}>No notes found — AI insights unavailable for this selection.</div>
+    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+      <div className="text-sm text-gray-500">No notes found — AI insights unavailable for this selection.</div>
     </div>
   )
 
-  // ── DONE — render insights ──
   const { topThemes, topObjections, objectionsBySource,
           overallSentiment, sentimentReason,
           leadClassifications, followupFlags } = insights
@@ -542,109 +712,90 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
     warm: (leadClassifications||[]).filter(l=>l.interest==="warm"),
     cold: (leadClassifications||[]).filter(l=>l.interest==="cold"),
   }
-
-  const LeadCard = ({ cl }) => {
-    const row = notesRows[cl.callIndex - 1]
-    return (
-      <div style={{ background:"var(--color-background-secondary)", borderRadius:6, padding:"7px 10px", marginBottom:5 }}>
-        <div style={{ fontSize:12, fontWeight:500 }}>{row?.source || `Call ${cl.callIndex}`}</div>
-        <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginTop:2 }}>{cl.reason}</div>
-        {row?.notes && (
-          <div style={{ fontSize:10, color:"var(--color-text-tertiary)", marginTop:3, fontStyle:"italic" }}>
-            "{row.notes.slice(0, 80)}{row.notes.length > 80 ? "…" : ""}"
-          </div>
-        )}
-      </div>
-    )
-  }
+  const sent = SENTIMENT[overallSentiment] || SENTIMENT.mixed
 
   return (
-    <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
-
-      {/* Sentiment + summary */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 2fr", gap:12 }}>
-        <div style={{...ss.card, display:"flex", flexDirection:"column", gap:8 }}>
-          <div style={{ fontSize:11, color:"var(--color-text-secondary)" }}>Overall sentiment</div>
-          <div style={{
-            ...ss.badge(SENTIMENT_BG[overallSentiment], SENTIMENT_COLOR[overallSentiment]),
-            fontSize:13, padding:"4px 12px",
-          }}>
-            {overallSentiment}
-          </div>
-          <div style={{ fontSize:12, color:"var(--color-text-secondary)", lineHeight:1.5 }}>
-            {sentimentReason}
-          </div>
+    <div className="space-y-4">
+      {/* Sentiment + themes */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className={`rounded-xl border p-5 flex flex-col gap-2 ${sent.bg} border-opacity-50`}>
+          <div className="text-xs text-gray-500 uppercase tracking-wide">Overall Sentiment</div>
+          <div className={`text-xl font-bold capitalize ${sent.text}`}>{overallSentiment}</div>
+          <div className="text-xs text-gray-600 leading-relaxed">{sentimentReason}</div>
         </div>
-        <div style={{...ss.card}}>
-          <div style={{ fontSize:12, fontWeight:500, marginBottom:8 }}>Top themes in notes</div>
-          {(topThemes||[]).map(({ theme, count, example }) => (
-            <div key={theme} style={{
-              display:"flex", alignItems:"center", justifyContent:"space-between",
-              padding:"5px 0", borderBottom:"0.5px solid var(--color-border-tertiary)",
-            }}>
-              <div>
-                <div style={{ fontSize:12 }}>{theme}</div>
-                {example && <div style={{ fontSize:10, color:"var(--color-text-tertiary)", marginTop:1, fontStyle:"italic" }}>
-                  "{example}"
-                </div>}
+        <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-3">Top Themes</div>
+          <div className="space-y-2">
+            {(topThemes||[]).slice(0,5).map(({ theme, count, example }) => (
+              <div key={theme} className="flex items-start justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0">
+                <div>
+                  <div className="text-sm text-gray-800">{theme}</div>
+                  {example && <div className="text-xs text-gray-400 italic mt-0.5">"{example}"</div>}
+                </div>
+                <span className="text-xs font-semibold bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-shrink-0">{count}</span>
               </div>
-              <div style={{ ...ss.badge("var(--color-background-secondary)","var(--color-text-secondary)"),
-                            minWidth:24, textAlign:"center" }}>
-                {count}
-              </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Objections */}
-      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
-        <div style={{...ss.card}}>
-          <div style={{ fontSize:12, fontWeight:500, marginBottom:8 }}>Objections & how handled</div>
-          {(topObjections||[]).map(({ objection, count, howHandled }) => (
-            <div key={objection} style={{ borderLeft:"2px solid #f09595", paddingLeft:10, marginBottom:10 }}>
-              <div style={{ display:"flex", justifyContent:"space-between" }}>
-                <span style={{ fontSize:12, fontWeight:500 }}>"{objection}"</span>
-                <span style={{ fontSize:11, color:"var(--color-text-secondary)" }}>{count}×</span>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-3">Objections &amp; How Handled</div>
+          <div className="space-y-3">
+            {(topObjections||[]).map(({ objection, count, howHandled }) => (
+              <div key={objection} className="border-l-2 border-red-300 pl-3">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm font-medium text-gray-800">"{objection}"</span>
+                  <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{count}×</span>
+                </div>
+                <div className="text-xs text-gray-500 mt-1">→ {howHandled}</div>
               </div>
-              <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginTop:2 }}>→ {howHandled}</div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
-        <div style={{...ss.card}}>
-          <div style={{ fontSize:12, fontWeight:500, marginBottom:8 }}>Objections by source</div>
-          {(objectionsBySource||[]).map(({ source, topObjection, count }) => (
-            <div key={source} style={{
-              display:"flex", justifyContent:"space-between", alignItems:"flex-start",
-              padding:"5px 0", borderBottom:"0.5px solid var(--color-border-tertiary)",
-            }}>
-              <div>
-                <div style={{ fontSize:12, fontWeight:500 }}>{source}</div>
-                <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginTop:1 }}>{topObjection}</div>
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-3">Objections by Source</div>
+          <div className="space-y-2">
+            {(objectionsBySource||[]).map(({ source, topObjection, count }) => (
+              <div key={source} className="flex justify-between items-start py-1.5 border-b border-gray-100 last:border-0">
+                <div>
+                  <div className="text-sm font-medium text-gray-700">{source}</div>
+                  <div className="text-xs text-gray-400 mt-0.5">{topObjection}</div>
+                </div>
+                <span className="text-xs text-gray-500 ml-2 flex-shrink-0">{count}×</span>
               </div>
-              <span style={{ fontSize:11, color:"var(--color-text-secondary)" }}>{count}×</span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Hot / Warm / Cold */}
-      <div>
-        <div style={{ fontSize:12, fontWeight:500, marginBottom:8 }}>Lead interest classification</div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:10 }}>
+      <div className="bg-white rounded-xl border border-gray-200 p-5">
+        <div className="text-sm font-semibold text-gray-800 mb-3">Lead Interest Classification</div>
+        <div className="grid grid-cols-3 gap-3">
           {[
-            { label:"Hot",  leads: classified.hot,  bc:"#fac775", bg:"#faeeda", tc:"#633806" },
-            { label:"Warm", leads: classified.warm, bc:"#85b7eb", bg:"#e6f1fb", tc:"#0c447c" },
-            { label:"Cold", leads: classified.cold, bc:"#B4B2A9", bg:"#f1efe8", tc:"#444441" },
-          ].map(({ label, leads, bc, bg, tc }) => (
-            <div key={label} style={{ border:`1.5px solid ${bc}`, borderRadius:8, padding:10 }}>
-              <div style={{ ...ss.badge(bg, tc), marginBottom:8 }}>
-                {label} — {leads.length}
-              </div>
-              {leads.length > 0
-                ? leads.map(cl => <LeadCard key={cl.callIndex} cl={cl} />)
-                : <div style={{ fontSize:11, color:"var(--color-text-tertiary)" }}>None</div>
-              }
+            { label:"🔥 Hot",  leads: classified.hot,  border:"border-amber-300",  bg:"bg-amber-50",  text:"text-amber-800"  },
+            { label:"🌤 Warm", leads: classified.warm, border:"border-blue-300",   bg:"bg-blue-50",   text:"text-blue-800"   },
+            { label:"❄ Cold",  leads: classified.cold, border:"border-gray-200",   bg:"bg-gray-50",   text:"text-gray-600"   },
+          ].map(({ label, leads, border, bg, text }) => (
+            <div key={label} className={`rounded-lg border ${border} p-3`}>
+              <div className={`text-xs font-semibold mb-2 ${text}`}>{label} — {leads.length}</div>
+              {leads.length > 0 ? leads.map(cl => {
+                const row = notesRows[cl.callIndex - 1]
+                return (
+                  <div key={cl.callIndex} className={`${bg} rounded-md p-2 mb-1.5 last:mb-0`}>
+                    <div className="text-xs font-medium text-gray-700">{row?.source || `Call ${cl.callIndex}`}</div>
+                    <div className="text-xs text-gray-500 mt-0.5 leading-tight">{cl.reason}</div>
+                    {row?.notes && (
+                      <div className="text-xs text-gray-400 mt-1 italic">
+                        "{row.notes.slice(0, 60)}{row.notes.length > 60 ? "…" : ""}"
+                      </div>
+                    )}
+                  </div>
+                )
+              }) : <div className="text-xs text-gray-400">None</div>}
             </div>
           ))}
         </div>
@@ -652,39 +803,31 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 
       {/* Follow-up flags */}
       {(followupFlags||[]).length > 0 && (
-        <div style={{...ss.card}}>
-          <div style={{ fontSize:12, fontWeight:500, marginBottom:10 }}>Follow-up flags</div>
-          {[...followupFlags]
-            .sort((a,b) => ["today","this-week","low"].indexOf(a.urgency) - ["today","this-week","low"].indexOf(b.urgency))
-            .map((f, i) => {
-              const u = URGENCY[f.urgency] || URGENCY.low
-              const row = notesRows[f.callIndex - 1]
-              return (
-                <div key={i} style={{
-                  display:"flex", alignItems:"flex-start", gap:10,
-                  padding:"8px 0", borderBottom:"0.5px solid var(--color-border-tertiary)",
-                }}>
-                  <span style={{ ...ss.badge(u.bg, u.color), whiteSpace:"nowrap", flexShrink:0 }}>
-                    {u.label}
-                  </span>
-                  <div style={{ flex:1 }}>
-                    <div style={{ fontSize:12, fontWeight:500 }}>
-                      {row?.source || `Call ${f.callIndex}`}
+        <div className="bg-white rounded-xl border border-gray-200 p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-3">Follow-up Flags</div>
+          <div className="space-y-3">
+            {[...followupFlags]
+              .sort((a,b) => ["today","this-week","low"].indexOf(a.urgency) - ["today","this-week","low"].indexOf(b.urgency))
+              .map((f, i) => {
+                const u   = URGENCY[f.urgency] || URGENCY.low
+                const row = notesRows[f.callIndex - 1]
+                return (
+                  <div key={i} className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full border flex-shrink-0 ${u.bg} ${u.text} ${u.border}`}>
+                      {u.label}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-medium text-gray-800">{row?.source || `Call ${f.callIndex}`}</div>
+                      <div className="text-xs text-gray-500 mt-0.5">{f.action}</div>
+                      <div className="text-xs text-gray-400 italic mt-0.5">"{f.signal}"</div>
                     </div>
-                    <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginTop:2 }}>{f.action}</div>
-                    <div style={{ fontSize:10, color:"var(--color-text-tertiary)", marginTop:3, fontStyle:"italic" }}>
-                      "{f.signal}"
-                    </div>
+                    <span className="text-xs text-gray-400 border border-gray-200 rounded-full px-2 py-0.5 flex-shrink-0">
+                      {row?.section || ""}
+                    </span>
                   </div>
-                  <span style={{
-                    border:"0.5px solid var(--color-border-tertiary)",
-                    borderRadius:20, fontSize:10, padding:"2px 7px",
-                    color:"var(--color-text-secondary)", flexShrink:0,
-                  }}>{row?.section || ""}</span>
-                </div>
-              )
-            })
-          }
+                )
+              })}
+          </div>
         </div>
       )}
     </div>
@@ -697,64 +840,87 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 
 function Overview({ date, setDate, allRows, onDrill }) {
   const s = computeStats(allRows)
+
   return (
-    <div style={{ padding:20, fontFamily:"var(--font-sans)", color:"var(--color-text-primary)" }}>
-      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:18 }}>
+    <div className="p-5 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
         <div>
-          <div style={{ fontSize:11, color:"var(--color-text-tertiary)", letterSpacing:".5px", marginBottom:2 }}>
-            ADMIN · INSIGHTS
-          </div>
-          <div style={{ fontSize:18, fontWeight:500 }}>Daily summary</div>
+          <div className="text-xs text-gray-400 uppercase tracking-widest mb-1">Admin · Insights</div>
+          <div className="text-2xl font-bold text-gray-900">Daily Summary</div>
         </div>
-        <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={ss.sel} />
+        <div className="flex items-center gap-3">
+          <input type="date" value={date} onChange={e => setDate(e.target.value)}
+                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          <button onClick={onDrill}
+                  className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
+            Detailed Analysis →
+          </button>
+        </div>
       </div>
 
       {s ? (
         <>
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10, marginBottom:16 }}>
-            {[
-              ["Total calls",    s.total,         "all counsellors",    ""],
-              ["Connected",      `${s.connected} (${s.connPct??0}%)`, "of outgoing",
-               s.connPct>=40?"#3b6d11":s.connPct>=20?"#854f0b":"#a32d2d"],
-              ["Total duration", `${s.totalDur} min`, "outgoing calls", ""],
-              ["Avg / call",     `${s.avgDur} min`,   "connected only", ""],
-            ].map(([l,v,sub,c])=>(
-              <div key={l} style={{ background:"var(--color-background-secondary)", borderRadius:8, padding:"12px 14px" }}>
-                <div style={{ fontSize:11, color:"var(--color-text-secondary)", marginBottom:4 }}>{l}</div>
-                <div style={{ fontSize:22, fontWeight:500, color:c||"var(--color-text-primary)" }}>{v}</div>
-                <div style={{ fontSize:11, color:"var(--color-text-tertiary)", marginTop:2 }}>{sub}</div>
-              </div>
-            ))}
+          {/* KPI row */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <KPICard label="Total Calls"    value={s.total}         sub="all counsellors"    icon="📞" />
+            <KPICard label="Connected"      value={`${s.connected} (${s.connPct ?? 0}%)`}
+                     sub="of outgoing"
+                     color={s.connPct >= 40 ? "#16a34a" : s.connPct >= 20 ? "#d97706" : "#dc2626"}
+                     icon="✅" />
+            <KPICard label="Total Duration" value={`${s.totalDur}m`} sub="outgoing calls"  icon="⏱" />
+            <KPICard label="Avg / Call"     value={`${s.avgDur}m`}   sub="connected only"  icon="📊" />
           </div>
 
-          <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr 1fr", gap:10, marginBottom:16 }}>
-            {ALL_COLS.map(c => {
-              const cs = computeStats(allRows.filter(r=>r.empName===c.key))
+          {/* Charts row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2">
+              <CallsBarChart allRows={allRows} />
+            </div>
+            <CallTypeDonut rows={allRows} />
+          </div>
+
+          {/* Counsellor cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {MAIN_COUNSELLORS.map(c => {
+              const cs = computeStats(allRows.filter(r => r.empName === c.key))
               return (
-                <div key={c.key} style={{...ss.card}}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                    <span style={{ fontWeight:500, fontSize:13 }}>{c.short}</span>
-                    {cs
-                      ? <span style={{...ss.badge("#eaf3de","#27500a")}}>{cs.outgoing} out</span>
-                      : <span style={{ fontSize:11, color:"var(--color-text-tertiary)" }}>no calls</span>
-                    }
+                <div key={c.key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer"
+                     onClick={onDrill}>
+                  <div className="flex items-center gap-3 mb-4">
+                    <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white"
+                         style={{ background: c.color }}>
+                      {c.short[0]}
+                    </div>
+                    <div>
+                      <div className="font-semibold text-gray-800">{c.short}</div>
+                      <div className="text-xs text-gray-400">{c.key}</div>
+                    </div>
+                    {cs && (
+                      <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full"
+                            style={{ background: c.bg, color: c.color }}>
+                        {cs.outgoing} out
+                      </span>
+                    )}
                   </div>
                   {cs ? (
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:4, fontSize:11 }}>
-                      {[
-                        ["Connected",`${cs.connected} (${cs.connPct??0}%)`],
-                        ["Duration",`${cs.totalDur}m`],
-                        ["Avg",`${cs.avgDur}m`],
-                        ["Missed",cs.missed],
-                      ].map(([l,v])=>(
-                        <>
-                          <div style={{color:"var(--color-text-secondary)"}}>{l}</div>
-                          <div style={{textAlign:"right",fontWeight:500}}>{v}</div>
-                        </>
-                      ))}
+                    <div className="space-y-2">
+                      <div className="flex justify-between text-xs text-gray-500 mb-1">
+                        <span>Connected</span>
+                        <span className="font-semibold" style={{ color: c.color }}>
+                          {cs.connected} / {cs.outgoing} ({cs.connPct ?? 0}%)
+                        </span>
+                      </div>
+                      <ProgressBar pct={cs.connPct} color={c.color} />
+                      <div className="pt-2 space-y-1">
+                        <StatChip label="Total calls" value={cs.total}        color={c.color} />
+                        <StatChip label="Missed"      value={cs.missed}       color="#ef4444" />
+                        <StatChip label="Duration"    value={`${cs.totalDur}m`} color="#64748b" />
+                        <StatChip label="Avg / call"  value={`${cs.avgDur}m`}   color="#64748b" />
+                      </div>
                     </div>
                   ) : (
-                    <div style={{ fontSize:11, color:"var(--color-text-tertiary)" }}>No data for {date}</div>
+                    <div className="text-xs text-gray-400 py-4 text-center">No calls on {date}</div>
                   )}
                 </div>
               )
@@ -762,20 +928,11 @@ function Overview({ date, setDate, allRows, onDrill }) {
           </div>
         </>
       ) : (
-        <div style={{ textAlign:"center", padding:48, color:"var(--color-text-secondary)", fontSize:13 }}>
-          No calls found on {date}. Try a different date.
+        <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
+          <div className="text-4xl mb-4">📭</div>
+          <div className="text-gray-500">No calls found on {date}. Try a different date.</div>
         </div>
       )}
-
-      <div style={{ display:"flex", justifyContent:"center" }}>
-        <button onClick={onDrill} style={{
-          background:"var(--color-text-primary)", color:"var(--color-background-primary)",
-          border:"none", borderRadius:8, padding:"10px 28px", fontSize:14,
-          fontFamily:"var(--font-sans)", cursor:"pointer", fontWeight:500,
-        }}>
-          View detailed analysis →
-        </button>
-      </div>
     </div>
   )
 }
@@ -788,10 +945,10 @@ function Detail({ date, setDate, allRows, onBack }) {
   const [mainTab, setMainTab] = useState("overall")
   const [section, setSection] = useState("all")
   const [source,  setSource]  = useState("all")
-  const [subTab,  setSubTab]  = useState("table")
+  const [subTab,  setSubTab]  = useState("charts")
 
   const filtered = useMemo(() => {
-    const secVal = SECTIONS.find(s=>s.key===section)?.val
+    const secVal = SECTIONS.find(s => s.key === section)?.val
     return allRows
       .filter(r => !secVal || r.section === secVal)
       .filter(r => source === "all" || r.source === source)
@@ -804,93 +961,110 @@ function Detail({ date, setDate, allRows, onBack }) {
   const vs = computeStats(visibleRows)
 
   const sources = useMemo(() => {
-    const s = new Set(allRows.map(r=>r.source).filter(Boolean))
-    return [...Array.from(s).sort()]
+    const s = new Set(allRows.map(r => r.source).filter(Boolean))
+    return [...s].sort()
   }, [allRows])
 
-  const counsellorNameForAI = mainTab === "overall"
-    ? "All counsellors"
-    : mainTab
+  const counsellorNameForAI = mainTab === "overall" ? "All counsellors" : mainTab
+  const activeColMeta = mainTab !== "overall" ? colMeta(mainTab) : null
+
+  const selClass = "border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
 
   return (
-    <div style={{ fontFamily:"var(--font-sans)", color:"var(--color-text-primary)" }}>
-      {/* header */}
-      <div style={{
-        padding:"10px 16px", borderBottom:"0.5px solid var(--color-border-tertiary)",
-        display:"flex", justifyContent:"space-between", alignItems:"center",
-        background:"var(--color-background-primary)", flexWrap:"wrap", gap:8,
-      }}>
-        <div style={{ display:"flex", alignItems:"center", gap:12 }}>
-          <button onClick={onBack} style={{
-            background:"none", border:"none", cursor:"pointer",
-            fontSize:13, color:"var(--color-text-secondary)", fontFamily:"var(--font-sans)",
-          }}>← Overview</button>
-          <span style={{ color:"var(--color-border-secondary)" }}>|</span>
-          <span style={{ fontWeight:500, fontSize:13 }}>Insights — {date}</span>
+    <div className="flex flex-col min-h-0">
+      {/* Sticky header */}
+      <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-wrap gap-3 sticky top-0 z-10">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack}
+                  className="text-xs text-gray-500 hover:text-gray-800 transition flex items-center gap-1">
+            ← Overview
+          </button>
+          <span className="text-gray-200">|</span>
+          <span className="text-sm font-semibold text-gray-800">Insights — {date}</span>
         </div>
-        <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-          <input type="date" value={date} onChange={e=>setDate(e.target.value)} style={ss.sel} />
-          <select value={section} onChange={e=>setSection(e.target.value)} style={ss.sel}>
-            {SECTIONS.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+        <div className="flex items-center gap-2 flex-wrap">
+          <input type="date" value={date} onChange={e => setDate(e.target.value)} className={selClass} />
+          <select value={section} onChange={e => setSection(e.target.value)} className={selClass}>
+            {SECTIONS.map(s => <option key={s.key} value={s.key}>{s.label}</option>)}
           </select>
-          <select value={source} onChange={e=>setSource(e.target.value)} style={ss.sel}>
+          <select value={source} onChange={e => setSource(e.target.value)} className={selClass}>
             <option value="all">All sources</option>
-            {sources.map(s=><option key={s} value={s}>{s}</option>)}
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
         </div>
       </div>
 
-      {/* counsellor tabs */}
-      <div style={{
-        borderBottom:"0.5px solid var(--color-border-tertiary)",
-        padding:"0 16px", display:"flex", overflowX:"auto",
-      }}>
-        {[["overall","Overall"],...ALL_COLS.map(c=>[c.key,c.short])].map(([k,l])=>(
-          <button key={k} onClick={()=>{setMainTab(k);setSubTab("table")}}
-                  style={ss.tabBtn(mainTab===k)}>{l}</button>
-        ))}
+      {/* Counsellor tabs */}
+      <div className="bg-white border-b border-gray-200 px-5 flex gap-1 overflow-x-auto">
+        {[["overall","Overall"], ...ALL_COLS.map(c => [c.key, c.short])].map(([k, l]) => {
+          const meta = k !== "overall" ? colMeta(k) : null
+          const isActive = mainTab === k
+          return (
+            <button key={k}
+                    onClick={() => { setMainTab(k); setSubTab("charts") }}
+                    className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                      isActive ? "border-gray-900 text-gray-900" : "border-transparent text-gray-400 hover:text-gray-600"
+                    }`}
+                    style={isActive && meta ? { borderColor: meta.color, color: meta.color } : {}}>
+              {l}
+            </button>
+          )
+        })}
       </div>
 
-      {/* summary banner */}
+      {/* Summary banner */}
       {vs && (
-        <div style={{
-          padding:"7px 16px", background:"var(--color-background-secondary)",
-          borderBottom:"0.5px solid var(--color-border-tertiary)",
-          display:"flex", gap:14, flexWrap:"wrap", fontSize:12, alignItems:"center",
-        }}>
-          <span><strong>{vs.outgoing}</strong> outgoing</span>
-          <span style={{color:"var(--color-border-secondary)"}}>·</span>
-          <span>
-            <strong>{vs.connected}</strong> connected
-            <span style={{color:"var(--color-text-tertiary)"}}> ({vs.connPct??0}%)</span>
+        <div className="bg-gray-50 border-b border-gray-200 px-5 py-2.5 flex items-center gap-4 flex-wrap text-xs">
+          <span className="text-gray-500"><strong className="text-gray-800">{vs.outgoing}</strong> outgoing</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500">
+            <strong className="text-gray-800">{vs.connected}</strong> connected
+            <span className="text-gray-400"> ({vs.connPct ?? 0}%)</span>
           </span>
-          <span style={{color:"var(--color-border-secondary)"}}>·</span>
-          <span><strong>{vs.totalDur}</strong> min total</span>
-          <span style={{color:"var(--color-border-secondary)"}}>·</span>
-          <span>avg <strong>{vs.avgDur}</strong> min/call</span>
-          <span style={{color:"var(--color-border-secondary)"}}>·</span>
-          <span><strong>{vs.unique}</strong> unique numbers</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500"><strong className="text-gray-800">{vs.totalDur}</strong> min total</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500">avg <strong className="text-gray-800">{vs.avgDur}</strong> min/call</span>
+          <span className="text-gray-300">·</span>
+          <span className="text-gray-500"><strong className="text-gray-800">{vs.unique}</strong> unique numbers</span>
         </div>
       )}
 
-      {/* sub-tabs */}
-      <div style={{
-        padding:"10px 16px", display:"flex", gap:6, flexWrap:"wrap",
-        borderBottom:"0.5px solid var(--color-border-tertiary)",
-      }}>
-        {[["table","Pivot table"],["ai","✦ AI insights"]].map(([k,l])=>(
-          <button key={k} onClick={()=>setSubTab(k)} style={ss.stBtn(subTab===k)}>{l}</button>
+      {/* Sub-tabs */}
+      <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
+        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["ai","✦ AI Insights"]].map(([k,l]) => (
+          <button key={k} onClick={() => setSubTab(k)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                    subTab === k
+                      ? "bg-gray-900 text-white"
+                      : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+                  }`}>
+            {l}
+          </button>
         ))}
       </div>
 
-      <div style={{ padding:16 }}>
-        {subTab === "table" && <PivotTable rows={visibleRows} />}
+      {/* Content */}
+      <div className="p-5 space-y-4">
+        {subTab === "charts" && (
+          <>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <StageBarChart rows={visibleRows} />
+              <SourceBarChart rows={visibleRows} />
+            </div>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <CallTypeDonut rows={visibleRows} />
+              <ConnectedBySection rows={visibleRows} />
+            </div>
+          </>
+        )}
+        {subTab === "table" && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <PivotTable rows={visibleRows} />
+          </div>
+        )}
         {subTab === "ai" && (
-          <AIInsightsPanel
-            rows={visibleRows}
-            counsellorName={counsellorNameForAI}
-            dateStr={date}
-          />
+          <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
         )}
       </div>
     </div>
@@ -905,7 +1079,7 @@ export default function AdminInsights() {
   const [view,    setView]    = useState("overview")
   const [date,    setDate]    = useState(() => {
     const d = new Date(); d.setDate(d.getDate() - 1)
-    return d.toISOString().slice(0,10)
+    return d.toISOString().slice(0, 10)
   })
   const [allRows, setAllRows] = useState([])
   const [loading, setLoading] = useState(false)
@@ -936,16 +1110,17 @@ export default function AdminInsights() {
   }, [date])
 
   if (loading) return (
-    <div style={{ padding:48, textAlign:"center", color:"var(--color-text-secondary)",
-                  fontFamily:"var(--font-sans)", fontSize:13 }}>
-      Loading calls for {date}…
+    <div className="flex flex-col items-center justify-center py-20 gap-4">
+      <div className="w-10 h-10 border-2 border-gray-900 border-t-transparent rounded-full animate-spin" />
+      <div className="text-sm text-gray-500">Loading calls for {date}…</div>
     </div>
   )
+
   if (error) return (
-    <div style={{ padding:20, color:"#a32d2d", fontFamily:"var(--font-sans)", fontSize:13 }}>{error}</div>
+    <div className="m-5 bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">{error}</div>
   )
 
   return view === "overview"
-    ? <Overview date={date} setDate={setDate} allRows={allRows} onDrill={()=>setView("detail")} />
-    : <Detail   date={date} setDate={setDate} allRows={allRows} onBack={()=>setView("overview")} />
+    ? <Overview date={date} setDate={setDate} allRows={allRows} onDrill={() => setView("detail")} />
+    : <Detail   date={date} setDate={setDate} allRows={allRows} onBack={() => setView("overview")} />
 }
