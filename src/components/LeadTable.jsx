@@ -2,7 +2,7 @@ import { useState } from 'react'
 
 function parseSerial(val) {
   const n = Number(val)
-  if (!isNaN(n) && n > 40000 && n < 60000) return new Date((n - 25569) * 86400 * 1000)
+  if (!isNaN(n) && n > 40000 && n < 60000) return new Date((Math.floor(n) - 25569) * 86400 * 1000)
   return new Date(val)
 }
 

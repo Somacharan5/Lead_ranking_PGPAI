@@ -266,60 +266,21 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
-  // DEBUG — log unique counsellor values from AR and nearby columns
-  const arValues = new Set()
-  const asValues = new Set()  // AS column
-  const atValues = new Set()  // AT column
-  dataRows.slice(0, 200).forEach(row => {
-    const ar = (row[43] || '').trim()
-    const as_ = (row[44] || '').trim()
-    const at = (row[45] || '').trim()
-    if (ar) arValues.add(ar)
-    if (as_) asValues.add(as_)
-    if (at) atValues.add(at)
-  })
-  console.log(`[NAS] ${counsellorName} — unique AR(43) values:`, [...arValues].slice(0, 20))
-  console.log(`[NAS] ${counsellorName} — unique AS(44) values:`, [...asValues].slice(0, 20))
-  console.log(`[NAS] ${counsellorName} — unique AT(45) values:`, [...atValues].slice(0, 20))
-  // Also log header row to verify column positions
-  if (newAppStartRows[0]) {
-    console.log(`[NAS] Header row cols 40-50:`, newAppStartRows[0].slice(40, 50))
-  }
-
-  let dbgCounsellor = 0, dbgStage = 0, dbgDate = 0, dbgSpoken = 0
   const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage   = (getCol(row, 'AU') || '').trim()
     const regOn      = getCol(row, 'Q')
 
     if (counsellor !== counsellorName) return false
-    dbgCounsellor++
-
-    if (appStage !== 'Untouched') {
-      console.log(`[NAS] STAGE DROP | ${getCol(row,'M')} | stage="${appStage}"`)
-      dbgStage++
-      return false
-    }
-
-    const dateOk = isYesterdayOrOlder(regOn)
-    if (!dateOk) {
-      const parsed = parseDate(regOn)
-      console.log(`[NAS] DATE DROP | ${getCol(row,'M')} | regOn=${regOn} | parsed=${parsed?.toISOString()} | daysDiff=${parsed ? daysDiff(new Date(), parsed) : 'N/A'}`)
-      dbgDate++
-      return false
-    }
-
-    return true
+    return appStage === 'Untouched' && isYesterdayOrOlder(regOn)
   })
 
   const spokenToday = [], actionable = []
   allMatching.forEach(row => {
     const lastAct = getCol(row, 'BG')
-    if (spokeToday(lastAct)) { dbgSpoken++; spokenToday.push(row) }
-    else actionable.push(row)
+    const bucket = spokeToday(lastAct) ? spokenToday : actionable
+    bucket.push(row)
   })
-
-  console.log(`[NAS] ${counsellorName} | total=${dataRows.length} | counsellor=${dbgCounsellor} | stageDrop=${dbgStage} | dateDrop=${dbgDate} | spokenToday=${dbgSpoken} | actionable=${actionable.length}`)
 
   const mapped = actionable
     .map(row => ({
