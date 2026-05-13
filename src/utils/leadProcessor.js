@@ -264,43 +264,57 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
+  let droppedWrongCounsellor = 0, droppedStage = 0, droppedDate = 0
+
   const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
-    const appStage = (getCol(row, 'AU') || '').trim()
-    const regOn = getCol(row, 'Q')
-    return (
-      counsellor === counsellorName &&
-      appStage === 'Untouched' &&
-      isYesterdayOrOlder(regOn)
-    )
+    const appStage   = (getCol(row, 'AU') || '').trim()
+    const regOn      = getCol(row, 'Q')
+
+    if (counsellor !== counsellorName) { droppedWrongCounsellor++; return false }
+    if (appStage   !== 'Untouched')    { droppedStage++;           return false }
+    if (!isYesterdayOrOlder(regOn))    { droppedDate++;            return false }
+    return true
   })
 
-  const spokenToday = []
-  const actionable = []
+  const spokenToday = [], actionable = []
   allMatching.forEach(row => {
     const bucket = spokeToday(getCol(row, 'BG')) ? spokenToday : actionable
     bucket.push(row)
   })
 
-  const mapped = actionable.map(row => ({
-    name: getCol(row, 'M'),
-    email: getCol(row, 'N'),
-    mobile: getCol(row, 'O'),
-    source: getCol(row, 'S'),
-    registeredOn: getCol(row, 'Q'),
-    medium: getCol(row, 'T'),
-    counsellorLastActivity: getCol(row, 'BG'),
-    campaign: getCol(row, 'U'),
-    stage: getCol(row, 'AU'),
-    subStage: getCol(row, 'AV'),
-    notes: getCol(row, 'BM'),
-    score: parseFloat(getCol(row, 'ET')) || 0,
-    counsellor: getCol(row, 'AR'),
-    priority: '',
-    category: 'New App Start',
-  }))
+  const mapped = actionable
+    .map(row => ({
+      name: getCol(row, 'M'),
+      email: getCol(row, 'N'),
+      mobile: getCol(row, 'O'),
+      source: getCol(row, 'S'),
+      registeredOn: getCol(row, 'Q'),
+      medium: getCol(row, 'T'),
+      counsellorLastActivity: getCol(row, 'BG'),
+      campaign: getCol(row, 'U'),
+      stage: getCol(row, 'AU'),
+      subStage: getCol(row, 'AV'),
+      notes: getCol(row, 'BM'),
+      score: parseFloat(getCol(row, 'ET')) || 0,
+      counsellor: getCol(row, 'AR'),
+      priority: '',
+      category: 'New App Start',
+    }))
+    .filter(lead => lead.priority !== 'Priority 5')
 
-  return { leads: mapped, spokenTodayCount: spokenToday.length }
+  return {
+    leads: mapped,
+    spokenTodayCount: spokenToday.length,
+    filterBreakdown: {
+      totalInSheet:           dataRows.length,
+      droppedWrongCounsellor,
+      droppedStage,
+      droppedDate,
+      droppedSpokenToday:     spokenToday.length,
+      finalCount:             mapped.length,
+    },
+  }
 }
 
 // ============================================================================
@@ -467,5 +481,9 @@ export async function getLeadsForCounsellor(counsellorName) {
       appFu.spokenTodayCount,
   }
 
-  return { ...allocation, spokenToday }
+  return {
+    ...allocation,
+    spokenToday,
+    filterBreakdown: { newAppStart: newApp.filterBreakdown },
+  }
 }
