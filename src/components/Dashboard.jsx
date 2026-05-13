@@ -352,21 +352,6 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
               </div>
             </div>
 
-            {activeTab === 'newapp' && data.filterBreakdown?.newAppStart && (() => {
-              const fb = data.filterBreakdown.newAppStart
-              return (
-                <div className="mb-3 bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-xs text-amber-800 flex flex-wrap gap-x-5 gap-y-1 items-center">
-                  <span className="font-semibold">📊 New App Start filter breakdown:</span>
-                  <span>Total in sheet: <b>{fb.totalInSheet}</b></span>
-                  <span>Other counsellors: <b>−{fb.droppedWrongCounsellor}</b></span>
-                  <span>Stage ≠ Untouched (→ App Followups): <b>−{fb.droppedStage}</b></span>
-                  <span>Registered today (visible tomorrow): <b>−{fb.droppedDate}</b></span>
-                  <span>Called today (hidden): <b>−{fb.droppedSpokenToday}</b></span>
-                  <span className="font-semibold text-amber-900">Showing: {fb.finalCount}</span>
-                </div>
-              )
-            })()}
-
             <LeadTable
               key={activeTab}
               leads={getCurrentLeads()}

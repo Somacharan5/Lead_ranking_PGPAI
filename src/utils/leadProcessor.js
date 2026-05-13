@@ -264,24 +264,35 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
-  let droppedWrongCounsellor = 0, droppedStage = 0, droppedDate = 0
+  console.group(`[NewAppStart] ${counsellorName} — ${dataRows.length} total rows`)
 
   const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage   = (getCol(row, 'AU') || '').trim()
     const regOn      = getCol(row, 'Q')
 
-    if (counsellor !== counsellorName) { droppedWrongCounsellor++; return false }
-    if (appStage   !== 'Untouched')    { droppedStage++;           return false }
-    if (!isYesterdayOrOlder(regOn))    { droppedDate++;            return false }
-    return true
+    if (counsellor !== counsellorName) return false
+
+    const stageOk = appStage === 'Untouched'
+    const dateOk  = isYesterdayOrOlder(regOn)
+
+    if (!stageOk || !dateOk) {
+      console.log(`DROPPED | name: ${getCol(row,'M')} | stage: "${appStage}" | regOn: ${regOn} | stageOk: ${stageOk} | dateOk: ${dateOk}`)
+    }
+    return stageOk && dateOk
   })
 
   const spokenToday = [], actionable = []
   allMatching.forEach(row => {
-    const bucket = spokeToday(getCol(row, 'BG')) ? spokenToday : actionable
+    const lastAct = getCol(row, 'BG')
+    const isSpoken = spokeToday(lastAct)
+    if (isSpoken) console.log(`HIDDEN (spoken today) | name: ${getCol(row,'M')} | lastAct: ${lastAct}`)
+    const bucket = isSpoken ? spokenToday : actionable
     bucket.push(row)
   })
+
+  console.log(`RESULT: ${actionable.length} actionable, ${spokenToday.length} spoken today`)
+  console.groupEnd()
 
   const mapped = actionable
     .map(row => ({
@@ -303,18 +314,7 @@ export function getNewAppStart(newAppStartRows, counsellorName) {
     }))
     .filter(lead => lead.priority !== 'Priority 5')
 
-  return {
-    leads: mapped,
-    spokenTodayCount: spokenToday.length,
-    filterBreakdown: {
-      totalInSheet:           dataRows.length,
-      droppedWrongCounsellor,
-      droppedStage,
-      droppedDate,
-      droppedSpokenToday:     spokenToday.length,
-      finalCount:             mapped.length,
-    },
-  }
+  return { leads: mapped, spokenTodayCount: spokenToday.length }
 }
 
 // ============================================================================
@@ -481,9 +481,5 @@ export async function getLeadsForCounsellor(counsellorName) {
       appFu.spokenTodayCount,
   }
 
-  return {
-    ...allocation,
-    spokenToday,
-    filterBreakdown: { newAppStart: newApp.filterBreakdown },
-  }
+  return { ...allocation, spokenToday }
 }
