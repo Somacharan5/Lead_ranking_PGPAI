@@ -176,7 +176,7 @@ function computeStats(rows) {
   const conn = out.filter(r => r.durationMins > 0)
   const uniq = new Set(out.map(r => r.toNumber).filter(Boolean)).size
   const dur  = out.reduce((s, r) => s + r.durationMins, 0)
-  const stages = {}, subStages = {}
+  const stages = {}, subStages = {}, outBySec = {}
   rows.forEach(r => {
     const st = r.leadStage || "Unknown"
     stages[st] = (stages[st] || 0) + 1
@@ -185,12 +185,16 @@ function computeStats(rows) {
       subStages[st][r.subStage] = (subStages[st][r.subStage] || 0) + 1
     }
   })
+  out.forEach(r => {
+    const sec = r.section || "Unknown"
+    outBySec[sec] = (outBySec[sec] || 0) + 1
+  })
   return {
     total: rows.length, outgoing: out.length, incoming: inc.length,
     missed: miss.length, unique: uniq, connected: conn.length,
     connPct: out.length ? Math.round(conn.length / out.length * 100) : null,
     totalDur: r2(dur), avgDur: r2(conn.length ? dur / conn.length : 0),
-    stages, subStages,
+    stages, subStages, outBySec,
   }
 }
 
@@ -545,8 +549,16 @@ function ConnectedBySection({ rows }) {
 // PIVOT TABLE
 // ─────────────────────────────────────────────────────────────────────────────
 
+const OUT_SECTIONS = [
+  { val: "App Followup",  label: "App Start Followup" },
+  { val: "App Start New", label: "App Start New"       },
+  { val: "Followup Lead", label: "Followup Leads"      },
+  { val: "Fresh Lead",    label: "Fresh Leads"         },
+]
+
 function PivotTable({ rows }) {
   const [stageOpen, setStageOpen] = useState({})
+  const [outOpen,   setOutOpen]   = useState(false)
 
   const allS  = computeStats(rows)
   const byCol = useMemo(() => {
@@ -613,7 +625,37 @@ function PivotTable({ rows }) {
         <tbody>
           <SectionRow label="Volume" color="#3b82f6" />
           <DataRow label="Total calls"            getV={s=>s.total}    bold />
-          <DataRow label="Outgoing"               getV={s=>s.outgoing} />
+          <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
+              onClick={() => setOutOpen(o => !o)}>
+            <td className="px-4 py-2.5 text-sm border-b border-gray-100 text-gray-800 select-none">
+              <span className="text-gray-400 text-xs mr-2">{outOpen ? "▼" : "▶"}</span>
+              Outgoing
+            </td>
+            <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+              {allS?.outgoing ?? "—"}
+            </td>
+            {ALL_COLS.map(c => (
+              <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
+                  style={{ color: byCol[c.key] ? c.color : "#d1d5db" }}>
+                {byCol[c.key]?.outgoing ?? 0}
+              </td>
+            ))}
+          </tr>
+          {outOpen && OUT_SECTIONS.map(sec => (
+            <tr key={sec.val} className="bg-gray-50">
+              <td className="py-2 text-xs text-gray-500 border-b border-gray-100" style={{ paddingLeft: 40 }}>
+                {sec.label}
+              </td>
+              <td className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600">
+                {allS?.outBySec?.[sec.val] ?? 0}
+              </td>
+              {ALL_COLS.map(c => (
+                <td key={c.key} className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500">
+                  {byCol[c.key]?.outBySec?.[sec.val] ?? 0}
+                </td>
+              ))}
+            </tr>
+          ))}
           <DataRow label="Incoming"               getV={s=>s.incoming} />
           <DataRow label="Missed / Rejected"      getV={s=>s.missed}   />
           <DataRow label="Unique numbers dialled" getV={s=>s.unique}   />
