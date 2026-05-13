@@ -42,7 +42,9 @@ function parseDate(dateStr) {
   // Range 40000–60000 covers roughly 2009–2064 — safe for all CRM dates.
   const numVal = Number(s)
   if (!isNaN(numVal) && numVal > 40000 && numVal < 60000) {
-    return new Date((numVal - 25569) * 86400 * 1000)
+    // Floor strips the fractional time component so IST timezone doesn't shift
+    // a late-evening UTC record into the next calendar day
+    return new Date((Math.floor(numVal) - 25569) * 86400 * 1000)
   }
 
   // ── ISO 8601: YYYY-MM-DD (unambiguous — try before slash formats) ─────────
@@ -264,8 +266,6 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
-  console.group(`[NewAppStart] ${counsellorName} — ${dataRows.length} total rows`)
-
   const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage   = (getCol(row, 'AU') || '').trim()
@@ -273,26 +273,15 @@ export function getNewAppStart(newAppStartRows, counsellorName) {
 
     if (counsellor !== counsellorName) return false
 
-    const stageOk = appStage === 'Untouched'
-    const dateOk  = isYesterdayOrOlder(regOn)
-
-    if (!stageOk || !dateOk) {
-      console.log(`DROPPED | name: ${getCol(row,'M')} | stage: "${appStage}" | regOn: ${regOn} | stageOk: ${stageOk} | dateOk: ${dateOk}`)
-    }
-    return stageOk && dateOk
+    return appStage === 'Untouched' && isYesterdayOrOlder(regOn)
   })
 
   const spokenToday = [], actionable = []
   allMatching.forEach(row => {
     const lastAct = getCol(row, 'BG')
-    const isSpoken = spokeToday(lastAct)
-    if (isSpoken) console.log(`HIDDEN (spoken today) | name: ${getCol(row,'M')} | lastAct: ${lastAct}`)
-    const bucket = isSpoken ? spokenToday : actionable
+    const bucket = spokeToday(lastAct) ? spokenToday : actionable
     bucket.push(row)
   })
-
-  console.log(`RESULT: ${actionable.length} actionable, ${spokenToday.length} spoken today`)
-  console.groupEnd()
 
   const mapped = actionable
     .map(row => ({
