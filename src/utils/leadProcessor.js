@@ -266,22 +266,41 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
 export function getNewAppStart(newAppStartRows, counsellorName) {
   const dataRows = newAppStartRows.slice(1)
 
+  // DEBUG — remove once counts are verified
+  let dbgCounsellor = 0, dbgStage = 0, dbgDate = 0, dbgSpoken = 0
   const allMatching = dataRows.filter(row => {
     const counsellor = (getCol(row, 'AR') || '').trim()
     const appStage   = (getCol(row, 'AU') || '').trim()
     const regOn      = getCol(row, 'Q')
 
     if (counsellor !== counsellorName) return false
+    dbgCounsellor++
 
-    return appStage === 'Untouched' && isYesterdayOrOlder(regOn)
+    if (appStage !== 'Untouched') {
+      console.log(`[NAS] STAGE DROP | ${getCol(row,'M')} | stage="${appStage}"`)
+      dbgStage++
+      return false
+    }
+
+    const dateOk = isYesterdayOrOlder(regOn)
+    if (!dateOk) {
+      const parsed = parseDate(regOn)
+      console.log(`[NAS] DATE DROP | ${getCol(row,'M')} | regOn=${regOn} | parsed=${parsed?.toISOString()} | daysDiff=${parsed ? daysDiff(new Date(), parsed) : 'N/A'}`)
+      dbgDate++
+      return false
+    }
+
+    return true
   })
 
   const spokenToday = [], actionable = []
   allMatching.forEach(row => {
     const lastAct = getCol(row, 'BG')
-    const bucket = spokeToday(lastAct) ? spokenToday : actionable
-    bucket.push(row)
+    if (spokeToday(lastAct)) { dbgSpoken++; spokenToday.push(row) }
+    else actionable.push(row)
   })
+
+  console.log(`[NAS] ${counsellorName} | total=${dataRows.length} | counsellor=${dbgCounsellor} | stageDrop=${dbgStage} | dateDrop=${dbgDate} | spokenToday=${dbgSpoken} | actionable=${actionable.length}`)
 
   const mapped = actionable
     .map(row => ({
