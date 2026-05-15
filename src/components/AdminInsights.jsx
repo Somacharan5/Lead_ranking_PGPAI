@@ -122,6 +122,10 @@ function isCounseled(raw) {
   return normalizeStage(raw).toLowerCase() === "counseled"
 }
 
+function isPaymentCompleted(raw) {
+  return cellText(raw).toLowerCase() === "completed"
+}
+
 function inferPipelineBucket(row) {
   const text = `${row.subStage || ""} ${row.notes || ""} ${row.priority || ""}`.toLowerCase()
   if (/(hot|high intent|very interested|will pay|payment|shortlist|visit|application|interview|callback today|priority 1)/.test(text)) return "hot"
@@ -154,6 +158,7 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
       source: cellText(row[cfg.sourceIdx]) || "Unknown",
       notes: cellText(row[cfg.notesIdx]),
       priority: cfg.priorityIdx !== null ? cellText(row[cfg.priorityIdx]) : "",
+      paymentStatus: cfg.paymentStatusIdx !== null ? cellText(row[cfg.paymentStatusIdx]) : "",
     }
     item.bucket = inferPipelineBucket(item)
     rows.push(item)
@@ -161,19 +166,19 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
 
   leadDumpRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: null,
+    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: null, paymentStatusIdx: 17,
   }))
   followupLeadRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: 74,
+    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: 74, paymentStatusIdx: 17,
   }))
   appStartRows.slice(1).forEach(row => add(row, {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
-    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null,
+    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null, paymentStatusIdx: 2,
   }))
   appFollowupRows.slice(1).forEach(row => add(row, {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
-    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: 150,
+    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: 150, paymentStatusIdx: 2,
   }))
 
   return rows
@@ -677,10 +682,15 @@ function ConnectedBySection({ rows }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
-  const counseledRows = useMemo(
+  const allCounseledRows = useMemo(
     () => pipelineRows.filter(r => isCounseled(r.stage)),
     [pipelineRows]
   )
+  const counseledRows = useMemo(
+    () => allCounseledRows.filter(r => !isPaymentCompleted(r.paymentStatus)),
+    [allCounseledRows]
+  )
+  const convertedCounseledCount = allCounseledRows.length - counseledRows.length
 
   const byCounsellor = useMemo(() => {
     return ALL_COLS.map(c => {
@@ -721,7 +731,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
   const spokenPipeline = useMemo(() => {
     const pipelineByPhone = {}
-    counseledRows.forEach(row => {
+    allCounseledRows.forEach(row => {
       if (row.phone) pipelineByPhone[row.phone] = row
     })
 
@@ -750,7 +760,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       const bucketOrder = { hot: 0, warm: 1, cold: 2 }
       return (bucketOrder[a.bucket] ?? 9) - (bucketOrder[b.bucket] ?? 9)
     })
-  }, [callRows, counseledRows])
+  }, [callRows, allCounseledRows])
 
   const spokenCounts = PIPELINE_BUCKETS.reduce((acc, b) => {
     acc[b.key] = spokenPipeline.filter(r => r.bucket === b.key).length
@@ -762,7 +772,13 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard label="Active Counseled" value={counseledRows.length} sub="current pipeline" icon="🎯" color="#16a34a" />
+        <KPICard
+          label="Active Counseled"
+          value={counseledRows.length}
+          sub={convertedCounseledCount ? `${convertedCounseledCount} converted excluded` : "current pipeline"}
+          icon="🎯"
+          color="#16a34a"
+        />
         {PIPELINE_BUCKETS.map(b => (
           <div key={b.key} className={`rounded-xl border p-5 ${b.bg} ${b.border}`}>
             <div className={`text-xs font-medium uppercase tracking-wide ${b.text}`}>{b.label}</div>
@@ -813,6 +829,9 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
               {spokenPipeline.filter(r => r.paidAppSignal).length} paid app signals
             </span>
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-gray-50 text-gray-600 border border-gray-200">
+              includes converted
+            </span>
           </div>
         </div>
 
@@ -854,6 +873,11 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
                       {row.paidAppSignal && (
                         <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
                           Paid App
+                        </span>
+                      )}
+                      {isPaymentCompleted(row.paymentStatus) && (
+                        <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-green-50 text-green-700 border border-green-200">
+                          Converted
                         </span>
                       )}
                     </td>
@@ -972,7 +996,9 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 }
 
 function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
-  const counseledPipeline = pipelineRows.filter(r => isCounseled(r.stage))
+  const allCounseledPipeline = pipelineRows.filter(r => isCounseled(r.stage))
+  const counseledPipeline = allCounseledPipeline.filter(r => !isPaymentCompleted(r.paymentStatus))
+  const convertedCount = allCounseledPipeline.length - counseledPipeline.length
   const net = pipelineChanges.netCounseled || 0
 
   return (
@@ -980,7 +1006,10 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
           <div className="text-sm font-semibold text-gray-800">Counselled Pipeline</div>
-          <div className="text-xs text-gray-400 mt-0.5">Active hot, warm and cold pipeline from current lead/app dumps</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            Active hot, warm and cold pipeline from current lead/app dumps
+            {convertedCount ? ` · ${convertedCount} converted excluded` : ""}
+          </div>
         </div>
         <button onClick={onOpenPipeline}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
@@ -1530,6 +1559,10 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
     ? filtered
     : filtered.filter(r => r.empName === mainTab)
 
+  const visiblePipelineRows = mainTab === "overall"
+    ? pipelineRows
+    : pipelineRows.filter(r => r.counsellor === mainTab)
+
   const vs = computeStats(visibleRows)
 
   const sources = useMemo(() => {
@@ -1636,7 +1669,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
           </div>
         )}
         {subTab === "pipeline" && (
-          <PipelineSection pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} callRows={allRows} date={date} />
+          <PipelineSection pipelineRows={visiblePipelineRows} pipelineChanges={pipelineChanges} callRows={visibleRows} date={date} />
         )}
         {subTab === "ai" && (
           <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
@@ -1686,6 +1719,7 @@ export default function AdminInsights() {
         const { subStageMap, notesMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap)
         const pipeline = buildPipelineRows(leadRaw, followupLeadRaw, appRaw, appFollowupRaw)
+        const activePipeline = pipeline.filter(row => !isPaymentCompleted(row.paymentStatus))
         const snapshotKey = "aias_admin_pipeline_snapshot_v1"
         let previous = null
         try {
@@ -1693,11 +1727,11 @@ export default function AdminInsights() {
         } catch {
           previous = null
         }
-        const changes = comparePipelineSnapshots(previous?.rows, pipeline)
+        const changes = comparePipelineSnapshots(previous?.rows, activePipeline)
         try {
           localStorage.setItem(snapshotKey, JSON.stringify({
             savedAt: new Date().toISOString(),
-            rows: snapshotPipeline(pipeline),
+            rows: snapshotPipeline(activePipeline),
           }))
         } catch {}
 
