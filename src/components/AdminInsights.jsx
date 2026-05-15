@@ -58,6 +58,12 @@ const CALL_TYPE_COLORS = {
   Rejected: "#f97316",
 }
 
+const PIPELINE_BUCKETS = [
+  { key: "hot",  label: "Hot",  color: "#ef4444", bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200" },
+  { key: "warm", label: "Warm", color: "#f59e0b", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
+  { key: "cold", label: "Cold", color: "#64748b", bg: "bg-slate-50",  text: "text-slate-700",  border: "border-slate-200" },
+]
+
 const URGENCY = {
   today:       { label: "Today",     bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"   },
   "this-week": { label: "This week", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
@@ -74,13 +80,13 @@ const SENTIMENT = {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function normalizeName(raw) {
-  const t = (raw || "").trim()
+  const t = cellText(raw)
   if (!t) return null
   return NAME_MAP[t] || "Others"
 }
 
 function inferSection(stageType, leadStage) {
-  const isUntouched = (leadStage || "").trim() === "Untouched"
+  const isUntouched = cellText(leadStage) === "Untouched"
   if (stageType === "Lead")                                  return isUntouched ? "Fresh Lead"    : "Followup Lead"
   if (stageType === "App Start" || stageType === "Paid App") return isUntouched ? "App Start New" : "App Followup"
   return "Unknown"
@@ -102,9 +108,130 @@ function sameDay(d1, d2) {
 
 function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
 function phone10(v) { return String(v || "").replace(/\D/g, "").slice(-10) }
+function cellText(v) { return v === null || v === undefined ? "" : String(v).trim() }
 
 function colMeta(key) {
   return ALL_COLS.find(c => c.key === key) || { color: "#94a3b8", bg: "#f8fafc", short: key }
+}
+
+function normalizeStage(raw) {
+  return cellText(raw)
+}
+
+function isCounseled(raw) {
+  return normalizeStage(raw).toLowerCase() === "counseled"
+}
+
+function inferPipelineBucket(row) {
+  const text = `${row.subStage || ""} ${row.notes || ""} ${row.priority || ""}`.toLowerCase()
+  if (/(hot|high intent|very interested|will pay|payment|shortlist|visit|application|interview|callback today|priority 1)/.test(text)) return "hot"
+  if (/(warm|interested|follow.?up|callback|thinking|discuss|parents|fees|scholarship|priority 2|priority 3)/.test(text)) return "warm"
+  if (/(cold|not interested|not eligible|wrong number|invalid|dropped|low intent|priority 5)/.test(text)) return "cold"
+  return "warm"
+}
+
+function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRows = [], appFollowupRows = []) {
+  const rows = []
+  const seen = new Set()
+
+  const add = (row, cfg) => {
+    const mobile = row[cfg.mobileIdx]
+    const phone = phone10(mobile)
+    const email = cellText(row[cfg.emailIdx]).toLowerCase()
+    const key = `${cfg.type}:${phone || email}`
+    if ((!phone && !email) || seen.has(key)) return
+    seen.add(key)
+
+    const item = {
+      id: key,
+      type: cfg.type,
+      name: cellText(row[cfg.nameIdx]),
+      email,
+      phone,
+      counsellor: normalizeName(row[cfg.counsellorIdx]) || "Others",
+      stage: normalizeStage(row[cfg.stageIdx]),
+      subStage: cellText(row[cfg.subStageIdx]) || "No substage",
+      source: cellText(row[cfg.sourceIdx]) || "Unknown",
+      notes: cellText(row[cfg.notesIdx]),
+      priority: cfg.priorityIdx !== null ? cellText(row[cfg.priorityIdx]) : "",
+    }
+    item.bucket = inferPipelineBucket(item)
+    rows.push(item)
+  }
+
+  leadDumpRows.slice(1).forEach(row => add(row, {
+    type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
+    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: null,
+  }))
+  followupLeadRows.slice(1).forEach(row => add(row, {
+    type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
+    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: 74,
+  }))
+  appStartRows.slice(1).forEach(row => add(row, {
+    type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
+    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null,
+  }))
+  appFollowupRows.slice(1).forEach(row => add(row, {
+    type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
+    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: 150,
+  }))
+
+  return rows
+}
+
+function snapshotPipeline(rows) {
+  const out = {}
+  rows.forEach(r => {
+    out[r.id] = {
+      id: r.id,
+      counsellor: r.counsellor,
+      type: r.type,
+      stage: r.stage || "Unknown",
+      subStage: r.subStage || "No substage",
+      bucket: r.bucket,
+      name: r.name,
+      phone: r.phone,
+      source: r.source,
+    }
+  })
+  return out
+}
+
+function comparePipelineSnapshots(prevMap, currentRows) {
+  if (!prevMap || Object.keys(prevMap).length === 0) {
+    return { hasBaseline: false, gainedCounseled: [], lostCounseled: [], stageChanges: [], subStageChanges: [], netCounseled: 0 }
+  }
+
+  const currentMap = snapshotPipeline(currentRows)
+  const gainedCounseled = []
+  const lostCounseled = []
+  const stageChanges = []
+  const subStageChanges = []
+
+  Object.values(currentMap).forEach(curr => {
+    const prev = prevMap[curr.id]
+    if (!prev) return
+    const wasCounseled = isCounseled(prev.stage)
+    const nowCounseled = isCounseled(curr.stage)
+
+    if (prev.stage !== curr.stage) {
+      const change = { ...curr, fromStage: prev.stage, toStage: curr.stage, fromSubStage: prev.subStage, toSubStage: curr.subStage }
+      stageChanges.push(change)
+      if (!wasCounseled && nowCounseled) gainedCounseled.push(change)
+      if (wasCounseled && !nowCounseled) lostCounseled.push(change)
+    } else if (nowCounseled && prev.subStage !== curr.subStage) {
+      subStageChanges.push({ ...curr, fromSubStage: prev.subStage, toSubStage: curr.subStage })
+    }
+  })
+
+  return {
+    hasBaseline: true,
+    gainedCounseled,
+    lostCounseled,
+    stageChanges,
+    subStageChanges,
+    netCounseled: gainedCounseled.length - lostCounseled.length,
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,8 +247,8 @@ export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
   leadDumpRows.slice(1).forEach(row => {
     const p = phone10(row[2])
     if (!p) return
-    const sub  = (row[22] || "").trim()
-    const note = (row[33] || "").trim()
+    const sub  = cellText(row[22])
+    const note = cellText(row[33])
     if (sub)  subStageMap[p] = sub
     if (note) notesMap[p]    = note
   })
@@ -129,8 +256,8 @@ export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
   appStartRows.slice(1).forEach(row => {
     const p = phone10(row[14])
     if (!p) return
-    const sub  = (row[47] || "").trim()
-    const note = (row[64] || "").trim()
+    const sub  = cellText(row[47])
+    const note = cellText(row[64])
     if (sub  && !subStageMap[p]) subStageMap[p] = sub
     if (note && !notesMap[p])    notesMap[p]    = note
   })
@@ -150,15 +277,15 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
     return {
       empName:      normalizeName(row[3]),
       toNumber:     p,
-      callType:     (row[8]  || "").trim(),
+      callType:     cellText(row[8]),
       callDate:     row[10],
       // Notes from Lead Dump / App Start Dump (joined by phone) — CRM notes written
       // by the counsellor on the lead record, not the brief call-log note in col M.
-      notes:        notesMap[p] || (row[12] || "").trim(),
+      notes:        notesMap[p] || cellText(row[12]),
       audioUrl:     row[14] || "",
-      stageType:    (row[15] || "").trim(),
-      source:       (row[19] || "").trim(),
-      leadStage:    (row[20] || "").trim(),
+      stageType:    cellText(row[15]),
+      source:       cellText(row[19]),
+      leadStage:    cellText(row[20]),
       durationMins: parseFloat(row[21]) || 0,
       subStage:     subStageMap[p] || "",
     }
@@ -541,6 +668,226 @@ function ConnectedBySection({ rows }) {
           <Bar dataKey="Connected" fill="#22c55e" radius={[3,3,0,0]} />
         </BarChart>
       </ResponsiveContainer>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// COUNSELED PIPELINE
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PipelineSection({ pipelineRows, pipelineChanges }) {
+  const counseledRows = useMemo(
+    () => pipelineRows.filter(r => isCounseled(r.stage)),
+    [pipelineRows]
+  )
+
+  const byCounsellor = useMemo(() => {
+    return ALL_COLS.map(c => {
+      const rows = counseledRows.filter(r => r.counsellor === c.key)
+      return {
+        name: c.short,
+        fullName: c.key,
+        hot: rows.filter(r => r.bucket === "hot").length,
+        warm: rows.filter(r => r.bucket === "warm").length,
+        cold: rows.filter(r => r.bucket === "cold").length,
+        total: rows.length,
+      }
+    }).filter(r => r.total > 0 || r.fullName !== "Others")
+  }, [counseledRows])
+
+  const bucketCounts = PIPELINE_BUCKETS.reduce((acc, b) => {
+    acc[b.key] = counseledRows.filter(r => r.bucket === b.key).length
+    return acc
+  }, {})
+
+  const subStageRows = useMemo(() => {
+    const map = {}
+    counseledRows.forEach(r => {
+      const key = `${r.subStage}__${r.bucket}`
+      if (!map[key]) map[key] = { subStage: r.subStage, bucket: r.bucket, count: 0, lead: 0, app: 0 }
+      map[key].count += 1
+      if (r.type === "Lead") map[key].lead += 1
+      else map[key].app += 1
+    })
+    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 12)
+  }, [counseledRows])
+
+  const movementRows = [
+    ...pipelineChanges.gainedCounseled.map(r => ({ ...r, kind: "gained" })),
+    ...pipelineChanges.lostCounseled.map(r => ({ ...r, kind: "lost" })),
+    ...pipelineChanges.subStageChanges.map(r => ({ ...r, kind: "substage" })),
+  ].slice(0, 12)
+
+  const net = pipelineChanges.netCounseled || 0
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <KPICard label="Active Counseled" value={counseledRows.length} sub="current pipeline" icon="🎯" color="#16a34a" />
+        {PIPELINE_BUCKETS.map(b => (
+          <div key={b.key} className={`rounded-xl border p-5 ${b.bg} ${b.border}`}>
+            <div className={`text-xs font-medium uppercase tracking-wide ${b.text}`}>{b.label}</div>
+            <div className={`text-3xl font-bold mt-2 ${b.text}`}>{bucketCounts[b.key] || 0}</div>
+            <div className="text-xs text-gray-500 mt-1">counseled leads</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+        <div className="flex items-center justify-between gap-3 mb-4">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Pipeline by Counsellor</div>
+            <div className="text-xs text-gray-400 mt-0.5">Hot, warm and cold split for active counselled leads</div>
+          </div>
+          <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+            net > 0 ? "bg-green-50 text-green-700 border-green-200" :
+            net < 0 ? "bg-red-50 text-red-700 border-red-200" :
+            "bg-gray-50 text-gray-600 border-gray-200"
+          }`}>
+            Counselled {net > 0 ? `+${net}` : net}
+          </span>
+        </div>
+        <ResponsiveContainer width="100%" height={260}>
+          <BarChart data={byCounsellor} barCategoryGap="30%">
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+            <XAxis dataKey="name" tick={{ fontSize: 12, fill: "#64748b" }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
+            <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+            <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
+            {PIPELINE_BUCKETS.map(b => (
+              <Bar key={b.key} dataKey={b.key} name={b.label} stackId="pipeline" fill={b.color} radius={[3,3,0,0]} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-800">Substage Bifurcation</div>
+            <div className="text-xs text-gray-400 mt-0.5">Top counselled substages by hot/warm/cold bucket</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Substage</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Bucket</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Lead</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">App</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {subStageRows.map(r => {
+                  const meta = PIPELINE_BUCKETS.find(b => b.key === r.bucket)
+                  return (
+                    <tr key={`${r.subStage}_${r.bucket}`} className="hover:bg-gray-50">
+                      <td className="px-4 py-3 text-gray-800 max-w-[220px] truncate" title={r.subStage}>{r.subStage}</td>
+                      <td className="px-4 py-3">
+                        <span className={`text-xs px-2 py-0.5 rounded-full border ${meta.bg} ${meta.text} ${meta.border}`}>{meta.label}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right text-gray-600">{r.lead}</td>
+                      <td className="px-4 py-3 text-right text-gray-600">{r.app}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-800">{r.count}</td>
+                    </tr>
+                  )
+                })}
+                {subStageRows.length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No counselled pipeline found.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
+            </div>
+          </div>
+          <div className="divide-y divide-gray-100">
+            {movementRows.map((r, i) => {
+              const isGain = r.kind === "gained"
+              const isLoss = r.kind === "lost"
+              return (
+                <div key={`${r.id}_${i}`} className="px-5 py-3 flex items-start gap-3">
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
+                    isGain ? "bg-green-50 text-green-700 border-green-200" :
+                    isLoss ? "bg-red-50 text-red-700 border-red-200" :
+                    "bg-blue-50 text-blue-700 border-blue-200"
+                  }`}>
+                    {isGain ? "+1" : isLoss ? "-1" : "sub"}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-gray-800 truncate">{r.name || r.phone || "Unknown lead"}</div>
+                    <div className="text-xs text-gray-500 mt-0.5">
+                      {r.kind === "substage"
+                        ? `${r.stage}: ${r.fromSubStage} → ${r.toSubStage}`
+                        : `${r.fromStage} → ${r.toStage}`}
+                    </div>
+                    <div className="text-xs text-gray-400 mt-0.5">{r.counsellor} · {r.type} · {r.source}</div>
+                  </div>
+                </div>
+              )
+            })}
+            {movementRows.length === 0 && (
+              <div className="px-5 py-10 text-center text-sm text-gray-400">
+                {pipelineChanges.hasBaseline ? "No counselled stage or substage changes detected." : "Snapshot baseline created for future comparison."}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
+  const counseledPipeline = pipelineRows.filter(r => isCounseled(r.stage))
+  const net = pipelineChanges.netCounseled || 0
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+      <div className="flex items-center justify-between gap-3 mb-4">
+        <div>
+          <div className="text-sm font-semibold text-gray-800">Counselled Pipeline</div>
+          <div className="text-xs text-gray-400 mt-0.5">Active hot, warm and cold pipeline from current lead/app dumps</div>
+        </div>
+        <button onClick={onOpenPipeline}
+                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
+          Open Pipeline
+        </button>
+      </div>
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="rounded-lg border border-green-200 bg-green-50 p-4">
+          <div className="text-xs text-green-700 uppercase tracking-wide">Active</div>
+          <div className="text-2xl font-bold text-green-700 mt-1">{counseledPipeline.length}</div>
+        </div>
+        {PIPELINE_BUCKETS.map(b => (
+          <div key={b.key} className={`rounded-lg border p-4 ${b.bg} ${b.border}`}>
+            <div className={`text-xs uppercase tracking-wide ${b.text}`}>{b.label}</div>
+            <div className={`text-2xl font-bold mt-1 ${b.text}`}>
+              {counseledPipeline.filter(r => r.bucket === b.key).length}
+            </div>
+          </div>
+        ))}
+        <div className={`rounded-lg border p-4 ${
+          net > 0 ? "bg-green-50 border-green-200" :
+          net < 0 ? "bg-red-50 border-red-200" :
+          "bg-gray-50 border-gray-200"
+        }`}>
+          <div className={`text-xs uppercase tracking-wide ${
+            net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-500"
+          }`}>Change</div>
+          <div className={`text-2xl font-bold mt-1 ${
+            net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-700"
+          }`}>{net > 0 ? `+${net}` : net}</div>
+        </div>
+      </div>
     </div>
   )
 }
@@ -933,7 +1280,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 // OVERVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Overview({ date, setDate, allRows, onDrill }) {
+function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDrill, onOpenPipeline }) {
   const s = computeStats(allRows)
 
   return (
@@ -974,6 +1321,8 @@ function Overview({ date, setDate, allRows, onDrill }) {
             </div>
             <CallTypeDonut rows={allRows} />
           </div>
+
+          <PipelineSummary pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} onOpenPipeline={onOpenPipeline} />
 
           {/* Counsellor cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -1023,10 +1372,13 @@ function Overview({ date, setDate, allRows, onDrill }) {
           </div>
         </>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
-          <div className="text-4xl mb-4">📭</div>
-          <div className="text-gray-500">No calls found on {date}. Try a different date.</div>
-        </div>
+        <>
+          <PipelineSummary pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} onOpenPipeline={onOpenPipeline} />
+          <div className="bg-white rounded-xl border border-gray-200 p-16 text-center">
+            <div className="text-4xl mb-4">📭</div>
+            <div className="text-gray-500">No calls found on {date}. Try a different date.</div>
+          </div>
+        </>
       )}
     </div>
   )
@@ -1036,11 +1388,11 @@ function Overview({ date, setDate, allRows, onDrill }) {
 // DETAIL VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Detail({ date, setDate, allRows, onBack }) {
+function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initialSubTab = "charts", onBack }) {
   const [mainTab, setMainTab] = useState("overall")
   const [section, setSection] = useState("all")
   const [source,  setSource]  = useState("all")
-  const [subTab,  setSubTab]  = useState("charts")
+  const [subTab,  setSubTab]  = useState(initialSubTab)
 
   const filtered = useMemo(() => {
     const secVal = SECTIONS.find(s => s.key === section)?.val
@@ -1127,7 +1479,7 @@ function Detail({ date, setDate, allRows, onBack }) {
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["ai","✦ AI Insights"]].map(([k,l]) => (
+        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"]].map(([k,l]) => (
           <button key={k} onClick={() => setSubTab(k)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                     subTab === k
@@ -1158,6 +1510,9 @@ function Detail({ date, setDate, allRows, onBack }) {
             <PivotTable rows={visibleRows} />
           </div>
         )}
+        {subTab === "pipeline" && (
+          <PipelineSection pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} />
+        )}
         {subTab === "ai" && (
           <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
         )}
@@ -1177,6 +1532,16 @@ export default function AdminInsights() {
     return d.toISOString().slice(0, 10)
   })
   const [allRows, setAllRows] = useState([])
+  const [pipelineRows, setPipelineRows] = useState([])
+  const [pipelineChanges, setPipelineChanges] = useState({
+    hasBaseline: false,
+    gainedCounseled: [],
+    lostCounseled: [],
+    stageChanges: [],
+    subStageChanges: [],
+    netCounseled: 0,
+  })
+  const [detailSubTab, setDetailSubTab] = useState("charts")
   const [loading, setLoading] = useState(false)
   const [error,   setError]   = useState("")
 
@@ -1186,14 +1551,36 @@ export default function AdminInsights() {
       setLoading(true); setError("")
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
-        const [callsRaw, leadRaw, appRaw] = await Promise.all([
+        const [callsRaw, leadRaw, followupLeadRaw, appRaw, appFollowupRaw] = await Promise.all([
           fetchSheetData('Calls History', 'A:V'),
-          fetchSheetData('Lead Dump',     'A:AH'),  // col AH (idx 33) = Notes
-          fetchSheetData('App Start Dump','A:BM'),  // col BM (idx 64) = Notes
+          fetchSheetData('Lead Dump', 'A:BW'),
+          fetchSheetData('Followup Sheet - LEAD', 'A:BW'),
+          fetchSheetData('App Start Dump', 'A:EU'),
+          fetchSheetData('Followup sheet - App start', 'A:EU'),
         ])
         const { subStageMap, notesMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap)
-        if (!cancelled) setAllRows(rows)
+        const pipeline = buildPipelineRows(leadRaw, followupLeadRaw, appRaw, appFollowupRaw)
+        const snapshotKey = "aias_admin_pipeline_snapshot_v1"
+        let previous = null
+        try {
+          previous = JSON.parse(localStorage.getItem(snapshotKey) || "null")
+        } catch {
+          previous = null
+        }
+        const changes = comparePipelineSnapshots(previous?.rows, pipeline)
+        try {
+          localStorage.setItem(snapshotKey, JSON.stringify({
+            savedAt: new Date().toISOString(),
+            rows: snapshotPipeline(pipeline),
+          }))
+        } catch {}
+
+        if (!cancelled) {
+          setAllRows(rows)
+          setPipelineRows(pipeline)
+          setPipelineChanges(changes)
+        }
       } catch (e) {
         if (!cancelled) setError("Failed to load: " + e.message)
       } finally {
@@ -1216,6 +1603,14 @@ export default function AdminInsights() {
   )
 
   return view === "overview"
-    ? <Overview date={date} setDate={setDate} allRows={allRows} onDrill={() => setView("detail")} />
-    : <Detail   date={date} setDate={setDate} allRows={allRows} onBack={() => setView("overview")} />
+    ? <Overview
+        date={date}
+        setDate={setDate}
+        allRows={allRows}
+        pipelineRows={pipelineRows}
+        pipelineChanges={pipelineChanges}
+        onDrill={() => { setDetailSubTab("charts"); setView("detail") }}
+        onOpenPipeline={() => { setDetailSubTab("pipeline"); setView("detail") }}
+      />
+    : <Detail   date={date} setDate={setDate} allRows={allRows} pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} initialSubTab={detailSubTab} onBack={() => setView("overview")} />
 }
