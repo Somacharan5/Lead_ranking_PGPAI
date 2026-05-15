@@ -109,6 +109,11 @@ function sameDay(d1, d2) {
 function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
 function phone10(v) { return String(v || "").replace(/\D/g, "").slice(-10) }
 function cellText(v) { return v === null || v === undefined ? "" : String(v).trim() }
+function hashText(text) {
+  let h = 0
+  for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
+  return Math.abs(h).toString(36)
+}
 
 function colMeta(key) {
   return ALL_COLS.find(c => c.key === key) || { color: "#94a3b8", bg: "#f8fafc", short: key }
@@ -1309,28 +1314,96 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
   const [insights, setInsights] = useState(null)
   const [errMsg,   setErrMsg]   = useState("")
   const cacheRef = useRef({})
+  const requestKeyRef = useRef("")
 
   const notesRows = useMemo(() => rows.filter(r => r.notes && r.notes.trim().length > 5), [rows])
-  const cacheKey  = `${counsellorName}__${dateStr}`
+  const notesSignature = useMemo(() => {
+    const compact = notesRows.map(r => [
+      r.toNumber,
+      r.empName,
+      r.section,
+      r.source,
+      r.leadStage,
+      r.subStage,
+      r.durationMins,
+      r.notes,
+    ].join("~")).join("|")
+    return hashText(compact)
+  }, [notesRows])
+  const cacheKey = `aias_ai_insights_v2__${dateStr}__${counsellorName}__${notesRows.length}__${notesSignature}`
 
-  const run = useCallback(async () => {
-    if (notesRows.length === 0) { setStatus("no-notes"); return }
-    if (cacheRef.current[cacheKey]) {
-      setInsights(cacheRef.current[cacheKey]); setStatus("done"); return
+  const readCached = useCallback((key) => {
+    if (cacheRef.current[key]) return cacheRef.current[key]
+    try {
+      const stored = JSON.parse(localStorage.getItem(key) || "null")
+      if (stored?.insights) {
+        cacheRef.current[key] = stored.insights
+        return stored.insights
+      }
+    } catch {}
+    return null
+  }, [])
+
+  const writeCached = useCallback((key, value) => {
+    cacheRef.current[key] = value
+    try {
+      localStorage.setItem(key, JSON.stringify({
+        savedAt: new Date().toISOString(),
+        date: dateStr,
+        counsellorName,
+        notesCount: notesRows.length,
+        insights: value,
+      }))
+    } catch {}
+  }, [counsellorName, dateStr, notesRows.length])
+
+  const run = useCallback(async (force = false) => {
+    requestKeyRef.current = cacheKey
+    setErrMsg("")
+
+    if (notesRows.length === 0) {
+      setInsights(null)
+      setStatus("no-notes")
+      return
     }
+
+    if (!force) {
+      const cached = readCached(cacheKey)
+      if (cached) {
+        setInsights(cached)
+        setStatus("done")
+        return
+      }
+    }
+
     setStatus("loading")
     try {
       const result = await fetchAIInsights(notesRows, counsellorName, dateStr)
       if (!result) throw new Error("Empty response from AI")
-      cacheRef.current[cacheKey] = result
+      if (requestKeyRef.current !== cacheKey) return
+      writeCached(cacheKey, result)
       setInsights(result)
       setStatus("done")
     } catch (e) {
-      setErrMsg(e.message); setStatus("error")
+      if (requestKeyRef.current !== cacheKey) return
+      setErrMsg(e.message)
+      setStatus("error")
     }
-  }, [notesRows, cacheKey, counsellorName, dateStr])
+  }, [notesRows, cacheKey, counsellorName, dateStr, readCached, writeCached])
 
-  if (status === "idle" && notesRows.length === 0) return (
+  useEffect(() => {
+    run(false)
+  }, [run])
+
+  if (status === "idle" || status === "loading") return (
+    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+      <div className="inline-block w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
+      <div className="text-sm text-gray-600">Analysing {notesRows.length} call notes…</div>
+      <div className="text-xs text-gray-400 mt-1">Stored date-wise for this counsellor and selected filters</div>
+    </div>
+  )
+
+  if (status === "no-notes") return (
     <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
       <div className="text-3xl mb-3">📭</div>
       <div className="text-sm font-medium text-gray-700 mb-1">No call notes on this date</div>
@@ -1338,38 +1411,10 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
     </div>
   )
 
-  if (status === "idle") return (
-    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-      <div className="text-3xl mb-3">✦</div>
-      <div className="text-sm font-semibold text-gray-800 mb-1">AI Insights ready</div>
-      <div className="text-xs text-gray-500 mb-5">
-        {notesRows.length} calls with notes · Claude will analyse themes, objections, interest levels &amp; follow-up flags
-      </div>
-      <button onClick={run}
-              className="px-6 py-2.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
-        ✦ Analyse with Claude
-      </button>
-    </div>
-  )
-
-  if (status === "loading") return (
-    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-      <div className="inline-block w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
-      <div className="text-sm text-gray-600">Analysing {notesRows.length} call notes…</div>
-      <div className="text-xs text-gray-400 mt-1">Claude is reading themes, objections and classifying leads</div>
-    </div>
-  )
-
   if (status === "error") return (
     <div className="bg-red-50 border border-red-200 rounded-xl p-6">
       <div className="text-sm text-red-700 font-medium mb-2">AI call failed: {errMsg}</div>
-      <button onClick={run} className="text-xs text-red-600 underline">Retry</button>
-    </div>
-  )
-
-  if (status === "no-notes") return (
-    <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
-      <div className="text-sm text-gray-500">No notes found — AI insights unavailable for this selection.</div>
+      <button onClick={() => run(true)} className="text-xs text-red-600 underline">Retry</button>
     </div>
   )
 
