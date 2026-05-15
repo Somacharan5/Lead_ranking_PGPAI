@@ -676,7 +676,7 @@ function ConnectedBySection({ rows }) {
 // COUNSELED PIPELINE
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PipelineSection({ pipelineRows, pipelineChanges }) {
+function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
   const counseledRows = useMemo(
     () => pipelineRows.filter(r => isCounseled(r.stage)),
     [pipelineRows]
@@ -719,6 +719,44 @@ function PipelineSection({ pipelineRows, pipelineChanges }) {
     ...pipelineChanges.subStageChanges.map(r => ({ ...r, kind: "substage" })),
   ].slice(0, 12)
 
+  const spokenPipeline = useMemo(() => {
+    const pipelineByPhone = {}
+    counseledRows.forEach(row => {
+      if (row.phone) pipelineByPhone[row.phone] = row
+    })
+
+    const byPhone = {}
+    callRows
+      .filter(row => row.durationMins > 0 && row.toNumber && pipelineByPhone[row.toNumber])
+      .forEach(call => {
+        const lead = pipelineByPhone[call.toNumber]
+        if (!byPhone[call.toNumber]) {
+          byPhone[call.toNumber] = {
+            ...lead,
+            calls: [],
+            totalDuration: 0,
+            paidAppSignal: false,
+            latestNote: "",
+          }
+        }
+        byPhone[call.toNumber].calls.push(call)
+        byPhone[call.toNumber].totalDuration += call.durationMins
+        byPhone[call.toNumber].paidAppSignal = byPhone[call.toNumber].paidAppSignal || call.stageType === "Paid App"
+        if (call.notes) byPhone[call.toNumber].latestNote = call.notes
+      })
+
+    return Object.values(byPhone).sort((a, b) => {
+      if (a.paidAppSignal !== b.paidAppSignal) return a.paidAppSignal ? -1 : 1
+      const bucketOrder = { hot: 0, warm: 1, cold: 2 }
+      return (bucketOrder[a.bucket] ?? 9) - (bucketOrder[b.bucket] ?? 9)
+    })
+  }, [callRows, counseledRows])
+
+  const spokenCounts = PIPELINE_BUCKETS.reduce((acc, b) => {
+    acc[b.key] = spokenPipeline.filter(r => r.bucket === b.key).length
+    return acc
+  }, {})
+
   const net = pipelineChanges.netCounseled || 0
 
   return (
@@ -760,6 +798,93 @@ function PipelineSection({ pipelineRows, pipelineChanges }) {
             ))}
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Spoken Today</div>
+            <div className="text-xs text-gray-400 mt-0.5">Connected calls from active counselled pipeline on {date}</div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
+              {spokenPipeline.length} spoken
+            </span>
+            <span className="text-xs font-semibold px-3 py-1 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+              {spokenPipeline.filter(r => r.paidAppSignal).length} paid app signals
+            </span>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-3 border-b border-gray-200">
+          {PIPELINE_BUCKETS.map(b => (
+            <div key={b.key} className={`px-5 py-4 border-r last:border-r-0 ${b.bg}`}>
+              <div className={`text-xs uppercase tracking-wide ${b.text}`}>{b.label}</div>
+              <div className={`text-2xl font-bold mt-1 ${b.text}`}>{spokenCounts[b.key] || 0}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[760px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Lead</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Bucket</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Substage</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Counsellor</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Calls</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Mins</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Notes / Status</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {spokenPipeline.slice(0, 20).map(row => {
+                const bucketMeta = PIPELINE_BUCKETS.find(b => b.key === row.bucket) || PIPELINE_BUCKETS[1]
+                return (
+                  <tr key={row.id} className="hover:bg-gray-50 align-top">
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-800 max-w-[180px] truncate" title={row.name || row.phone}>{row.name || row.phone}</div>
+                      <div className="text-xs text-gray-400">{row.type} · {row.source}</div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={`text-xs px-2 py-0.5 rounded-full border ${bucketMeta.bg} ${bucketMeta.text} ${bucketMeta.border}`}>
+                        {bucketMeta.label}
+                      </span>
+                      {row.paidAppSignal && (
+                        <span className="ml-1 text-xs px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 border border-violet-200">
+                          Paid App
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate" title={row.subStage}>{row.subStage}</td>
+                    <td className="px-4 py-3 text-gray-600">{row.counsellor}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{row.calls.length}</td>
+                    <td className="px-4 py-3 text-right text-gray-700">{r2(row.totalDuration)}</td>
+                    <td className="px-4 py-3 text-gray-600 max-w-[280px]">
+                      <div className="line-clamp-2" title={row.latestNote || row.notes}>
+                        {row.latestNote || row.notes || <span className="text-gray-300">No notes</span>}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+              {spokenPipeline.length === 0 && (
+                <tr>
+                  <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
+                    No active counselled leads were spoken to on this date.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {spokenPipeline.length > 20 && (
+          <div className="px-5 py-3 text-xs text-gray-400 border-t border-gray-100">
+            Showing first 20 spoken counselled leads, prioritised by Paid App signal and bucket.
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -1511,7 +1636,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
           </div>
         )}
         {subTab === "pipeline" && (
-          <PipelineSection pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} />
+          <PipelineSection pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} callRows={allRows} date={date} />
         )}
         {subTab === "ai" && (
           <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
