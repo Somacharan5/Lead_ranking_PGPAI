@@ -711,6 +711,19 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
     return acc
   }, {})
 
+  const typeRows = useMemo(() => {
+    return ["Lead", "App Start"].map(type => {
+      const rows = counseledRows.filter(r => r.type === type)
+      return {
+        type,
+        hot: rows.filter(r => r.bucket === "hot").length,
+        warm: rows.filter(r => r.bucket === "warm").length,
+        cold: rows.filter(r => r.bucket === "cold").length,
+        total: rows.length,
+      }
+    })
+  }, [counseledRows])
+
   const subStageRows = useMemo(() => {
     const map = {}
     counseledRows.forEach(r => {
@@ -814,6 +827,66 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
             ))}
           </BarChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-1">Lead vs App Start</div>
+          <div className="text-xs text-gray-400 mb-4">Active counselled pipeline split</div>
+          <div className="space-y-3">
+            {typeRows.map(row => {
+              const pct = counseledRows.length ? Math.round(row.total / counseledRows.length * 100) : 0
+              return (
+                <div key={row.type}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-gray-700">{row.type}</span>
+                    <span className="text-sm font-semibold text-gray-900">{row.total}</span>
+                  </div>
+                  <ProgressBar pct={pct} color={row.type === "App Start" ? "#8b5cf6" : "#3b82f6"} />
+                  <div className="text-xs text-gray-400 mt-1">{pct}% of active counselled</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+
+        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+          <div className="px-5 py-4 border-b border-gray-200">
+            <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
+            <div className="text-xs text-gray-400 mt-0.5">Lead and App Start split by Hot, Warm and Cold</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Type</th>
+                  {PIPELINE_BUCKETS.map(b => (
+                    <th key={b.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500">{b.label}</th>
+                  ))}
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {typeRows.map(row => (
+                  <tr key={row.type} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-800">{row.type}</td>
+                    {PIPELINE_BUCKETS.map(b => (
+                      <td key={b.key} className="px-4 py-3 text-right text-gray-700">{row[b.key]}</td>
+                    ))}
+                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{row.total}</td>
+                  </tr>
+                ))}
+                <tr className="bg-gray-50">
+                  <td className="px-4 py-3 font-semibold text-gray-800">Total</td>
+                  {PIPELINE_BUCKETS.map(b => (
+                    <td key={b.key} className="px-4 py-3 text-right font-semibold text-gray-800">{bucketCounts[b.key] || 0}</td>
+                  ))}
+                  <td className="px-4 py-3 text-right font-bold text-gray-900">{counseledRows.length}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
