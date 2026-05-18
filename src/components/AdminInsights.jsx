@@ -169,6 +169,9 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     rows.push(item)
   }
 
+  // TODO: paymentStatusIdx values need verification against the actual sheet columns.
+  // Lead Dump col R (idx 17) and App Start Dump col C (idx 2) are not in the confirmed
+  // column map. If wrong, converted leads will not be filtered out of the pipeline.
   leadDumpRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
     counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: null, paymentStatusIdx: 17,
@@ -464,15 +467,6 @@ function ProgressBar({ pct, color }) {
   )
 }
 
-function ChartHeader({ title, note, className = "mb-4" }) {
-  return (
-    <div className={className}>
-      <div className="text-sm font-semibold text-gray-800">{title}</div>
-      {note && <p className="text-xs text-gray-500 leading-relaxed mt-1">{note}</p>}
-    </div>
-  )
-}
-
 function StatChip({ label, value, color }) {
   return (
     <div className="flex items-center justify-between py-1">
@@ -527,10 +521,7 @@ function CallsBarChart({ allRows }) {
   })
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <ChartHeader
-        title="Calls by Counsellor"
-        note="Outgoing dial attempts, answered outgoing calls (duration > 0 min), and missed/rejected calls per counsellor for the selected date (Calls History)."
-      />
+      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Counsellor</div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barGap={4} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -554,11 +545,7 @@ function CallTypeDonut({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <ChartHeader
-        title="Call Type Breakdown"
-        note="Share of all logged calls by type (Outgoing, Incoming, Missed, Rejected) for the current date and filters."
-        className="mb-2"
-      />
+      <div className="text-sm font-semibold text-gray-800 mb-2">Call Type Breakdown</div>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
@@ -603,10 +590,7 @@ function StageBarChart({ rows }) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <ChartHeader
-        title="Stage Breakdown"
-        note="How many calls were logged against each CRM lead/app stage (Calls History Col U) at the time of the call."
-      />
+      <div className="text-sm font-semibold text-gray-800 mb-4">Stage Breakdown</div>
       <div className="space-y-3">
         {data.map(d => (
           <div key={d.fullName}>
@@ -638,10 +622,7 @@ function SourceBarChart({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <ChartHeader
-        title="Calls by Source"
-        note="Call volume by marketing source (Calls History Col T), e.g. pgp-dsai, Google_Search — top 8 sources for the selected filters."
-      />
+      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Source</div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barCategoryGap="35%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -688,10 +669,7 @@ function ConnectedBySection({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <ChartHeader
-        title="Connected by Section"
-        note="Outgoing vs connected calls split by inferred queue (Fresh, Followup, App New, App FU) from stage type + stage at call time."
-      />
+      <div className="text-sm font-semibold text-gray-800 mb-4">Connected by Section</div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} barGap={3} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -814,19 +792,11 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 bg-violet-50 border border-violet-200 rounded-lg px-4 py-2.5">
-        Pipeline views use current Lead/App dump data (not just today&apos;s calls). Hot/Warm/Cold is inferred from substage, notes, and priority text.
-      </p>
-      <ChartHeader
-        title="Pipeline counts"
-        note="Active Counseled leads in CRM now, split by inferred Hot / Warm / Cold interest (payment-completed excluded)."
-        className="mb-1"
-      />
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <KPICard
           label="Active Counseled"
           value={counseledRows.length}
-          sub={convertedCounseledCount ? `${convertedCounseledCount} converted excluded` : "all active counselled"}
+          sub={convertedCounseledCount ? `${convertedCounseledCount} converted excluded` : "current pipeline"}
           icon="🎯"
           color="#16a34a"
         />
@@ -834,7 +804,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
           <div key={b.key} className={`rounded-xl border p-5 ${b.bg} ${b.border}`}>
             <div className={`text-xs font-medium uppercase tracking-wide ${b.text}`}>{b.label}</div>
             <div className={`text-3xl font-bold mt-2 ${b.text}`}>{bucketCounts[b.key] || 0}</div>
-            <div className="text-xs text-gray-500 mt-1">active counselled in this bucket</div>
+            <div className="text-xs text-gray-500 mt-1">counseled leads</div>
           </div>
         ))}
       </div>
@@ -842,11 +812,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
         <div className="flex items-center justify-between gap-3 mb-4">
           <div>
-            <ChartHeader
-              title="Pipeline by Counsellor"
-              note="Stacked count of active Counseled leads (payment not completed) per counsellor, split by inferred interest: Hot, Warm, Cold from substage, notes, and priority keywords."
-              className="mb-0"
-            />
+            <div className="text-sm font-semibold text-gray-800">Pipeline by Counsellor</div>
+            <div className="text-xs text-gray-400 mt-0.5">Hot, warm and cold split for active counselled leads</div>
           </div>
           <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
             net > 0 ? "bg-green-50 text-green-700 border-green-200" :
@@ -872,11 +839,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <ChartHeader
-            title="Lead vs App Start"
-            note="Share of active Counseled pipeline records from Lead Dump vs App Start sheets (excludes converted/payment completed)."
-            className="mb-4"
-          />
+          <div className="text-sm font-semibold text-gray-800 mb-1">Lead vs App Start</div>
+          <div className="text-xs text-gray-400 mb-4">Active counselled pipeline split</div>
           <div className="space-y-3">
             {typeRows.map(row => {
               const pct = counseledRows.length ? Math.round(row.total / counseledRows.length * 100) : 0
@@ -887,7 +851,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
                     <span className="text-sm font-semibold text-gray-900">{row.total}</span>
                   </div>
                   <ProgressBar pct={pct} color={row.type === "App Start" ? "#8b5cf6" : "#3b82f6"} />
-                  <div className="text-xs text-gray-400 mt-1">{pct}% of active counselled pipeline (bar = share of total)</div>
+                  <div className="text-xs text-gray-400 mt-1">{pct}% of active counselled</div>
                 </div>
               )
             })}
@@ -896,11 +860,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
         <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200">
-            <ChartHeader
-              title="Pipeline Type Bifurcation"
-              note="Count of active Counseled leads by record type (Lead vs App Start) and interest bucket (Hot / Warm / Cold)."
-              className="mb-0"
-            />
+            <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
+            <div className="text-xs text-gray-400 mt-0.5">Lead and App Start split by Hot, Warm and Cold</div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -939,11 +900,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <ChartHeader
-              title="Spoken Today"
-              note={`Counseled pipeline leads who had a connected call on ${date} (duration > 0), matched by phone to Calls History.`}
-              className="mb-0"
-            />
+            <div className="text-sm font-semibold text-gray-800">Spoken Today</div>
+            <div className="text-xs text-gray-400 mt-0.5">Connected calls from active counselled pipeline on {date}</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
@@ -958,7 +916,6 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
           </div>
         </div>
 
-        <p className="text-xs text-gray-500 px-5 py-2 border-b border-gray-100">Spoken counselled leads today, counted by inferred Hot / Warm / Cold bucket.</p>
         <div className="grid grid-cols-3 border-b border-gray-200">
           {PIPELINE_BUCKETS.map(b => (
             <div key={b.key} className={`px-5 py-4 border-r last:border-r-0 ${b.bg}`}>
@@ -1038,11 +995,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200">
-            <ChartHeader
-              title="Substage Bifurcation"
-              note="Top substages among active Counseled leads, showing how many are Lead vs App Start in each Hot / Warm / Cold bucket."
-              className="mb-0"
-            />
+            <div className="text-sm font-semibold text-gray-800">Substage Bifurcation</div>
+            <div className="text-xs text-gray-400 mt-0.5">Top counselled substages by hot/warm/cold bucket</div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -1080,13 +1034,10 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-gray-200">
-            <ChartHeader
-              title="Pipeline Changes"
-              note={pipelineChanges.hasBaseline
-                ? "Leads who moved into/out of Counseled or changed substage since the last saved pipeline snapshot in this browser."
-                : "First visit saves a baseline snapshot; return after CRM updates to see stage and substage movements."}
-              className="mb-0"
-            />
+            <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
+            </div>
           </div>
           <div className="divide-y divide-gray-100">
             {movementRows.map((r, i) => {
@@ -1135,11 +1086,11 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between gap-3 mb-4">
         <div>
-          <ChartHeader
-            title="Counselled Pipeline"
-            note={`Snapshot of all Counseled leads in Lead/App dumps, bucketed Hot/Warm/Cold${convertedCount ? ` (${convertedCount} payment-completed excluded from active count)` : ""}. Net change vs last browser snapshot.`}
-            className="mb-0"
-          />
+          <div className="text-sm font-semibold text-gray-800">Counselled Pipeline</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            Active hot, warm and cold pipeline from current lead/app dumps
+            {convertedCount ? ` · ${convertedCount} converted excluded` : ""}
+          </div>
         </div>
         <button onClick={onOpenPipeline}
                 className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
@@ -1218,7 +1169,7 @@ function PivotTable({ rows }) {
 
   const SectionRow = ({ label, color }) => (
     <tr>
-      <td colSpan={6} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider"
+      <td colSpan={2 + ALL_COLS.length} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider"
           style={{ background: color + "12", color, borderTop: `1px solid ${color}30` }}>
         {label}
       </td>
@@ -1245,13 +1196,6 @@ function PivotTable({ rows }) {
 
   return (
     <div className="overflow-x-auto">
-      <div className="px-5 py-4 border-b border-gray-200">
-        <ChartHeader
-          title="Call metrics pivot"
-          note="Rows are call-volume, connection, stage, and duration metrics for the selected date/filters. Columns compare Total vs each counsellor (Jasmeet, Komal, Prerna, Others)."
-          className="mb-0"
-        />
-      </div>
       <table className="w-full text-sm min-w-[600px]">
         <thead>
           <tr>
@@ -1490,26 +1434,15 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-gray-500 bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5">
-        AI reads call notes (Calls History Col M) for the selected date and filters, then summarizes themes, objections, interest level, and follow-ups.
-      </p>
       {/* Sentiment + themes */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className={`rounded-xl border p-5 flex flex-col gap-2 ${sent.bg} border-opacity-50`}>
-          <ChartHeader
-            title="Overall Sentiment"
-            note="AI judgment of tone across all analysed call notes for this selection (positive, mixed, or negative)."
-            className="mb-2"
-          />
+          <div className="text-xs text-gray-500 uppercase tracking-wide">Overall Sentiment</div>
           <div className={`text-xl font-bold capitalize ${sent.text}`}>{overallSentiment}</div>
           <div className="text-xs text-gray-600 leading-relaxed">{sentimentReason}</div>
         </div>
         <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-          <ChartHeader
-            title="Top Themes"
-            note="Most common topics or intents mentioned in call notes (with example phrases)."
-            className="mb-3"
-          />
+          <div className="text-sm font-semibold text-gray-800 mb-3">Top Themes</div>
           <div className="space-y-2">
             {(topThemes||[]).slice(0,5).map(({ theme, count, example }) => (
               <div key={theme} className="flex items-start justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0">
@@ -1527,11 +1460,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
       {/* Objections */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <ChartHeader
-            title="Objections & How Handled"
-            note="Repeated pushbacks or concerns in notes, and how counsellors addressed them."
-            className="mb-3"
-          />
+          <div className="text-sm font-semibold text-gray-800 mb-3">Objections &amp; How Handled</div>
           <div className="space-y-3">
             {(topObjections||[]).map(({ objection, count, howHandled }) => (
               <div key={objection} className="border-l-2 border-red-300 pl-3">
@@ -1545,11 +1474,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
           </div>
         </div>
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <ChartHeader
-            title="Objections by Source"
-            note="Which marketing source most often raised each type of objection."
-            className="mb-3"
-          />
+          <div className="text-sm font-semibold text-gray-800 mb-3">Objections by Source</div>
           <div className="space-y-2">
             {(objectionsBySource||[]).map(({ source, topObjection, count }) => (
               <div key={source} className="flex justify-between items-start py-1.5 border-b border-gray-100 last:border-0">
@@ -1566,11 +1491,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 
       {/* Hot / Warm / Cold */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">
-        <ChartHeader
-          title="Lead Interest Classification"
-          note="AI-rated interest per call with notes: Hot (high intent), Warm (needs follow-up), Cold (low intent)."
-          className="mb-3"
-        />
+        <div className="text-sm font-semibold text-gray-800 mb-3">Lead Interest Classification</div>
         <div className="grid grid-cols-3 gap-3">
           {[
             { label:"🔥 Hot",  leads: classified.hot,  border:"border-amber-300",  bg:"bg-amber-50",  text:"text-amber-800"  },
@@ -1601,11 +1522,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
       {/* Follow-up flags */}
       {(followupFlags||[]).length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <ChartHeader
-            title="Follow-up Flags"
-            note="Calls that need a specific next action, ranked by urgency (Today, This week, Low)."
-            className="mb-3"
-          />
+          <div className="text-sm font-semibold text-gray-800 mb-3">Follow-up Flags</div>
           <div className="space-y-3">
             {[...followupFlags]
               .sort((a,b) => ["today","this-week","low"].indexOf(a.urgency) - ["today","this-week","low"].indexOf(b.urgency))
@@ -1648,7 +1565,6 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
         <div>
           <div className="text-xs text-gray-400 uppercase tracking-widest mb-1">Admin · Insights</div>
           <div className="text-2xl font-bold text-gray-900">Daily Summary</div>
-          <p className="text-xs text-gray-500 mt-1">Call activity from Calls History for the selected date (defaults to yesterday).</p>
         </div>
         <div className="flex items-center gap-3">
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
@@ -1664,13 +1580,13 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
         <>
           {/* KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KPICard label="Total Calls"    value={s.total}         sub="All call log entries on this date (all types)"    icon="📞" />
+            <KPICard label="Total Calls"    value={s.total}         sub="all counsellors"    icon="📞" />
             <KPICard label="Connected"      value={`${s.connected} (${s.connPct ?? 0}%)`}
-                     sub="Outgoing calls with duration > 0 min"
+                     sub="of outgoing"
                      color={s.connPct >= 40 ? "#16a34a" : s.connPct >= 20 ? "#d97706" : "#dc2626"}
                      icon="✅" />
-            <KPICard label="Total Duration" value={`${s.totalDur}m`} sub="Sum of outgoing call minutes"  icon="⏱" />
-            <KPICard label="Avg / Call"     value={`${s.avgDur}m`}   sub="Mean minutes per connected outgoing call"  icon="📊" />
+            <KPICard label="Total Duration" value={`${s.totalDur}m`} sub="outgoing calls"  icon="⏱" />
+            <KPICard label="Avg / Call"     value={`${s.avgDur}m`}   sub="connected only"  icon="📊" />
           </div>
 
           {/* Charts row */}
@@ -1683,11 +1599,7 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
 
           <PipelineSummary pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} onOpenPipeline={onOpenPipeline} />
 
-          <ChartHeader
-            title="Counsellor summary cards"
-            note="Per-counsellor call volume, connection rate, and duration for this date. Click a card for detailed analysis."
-            className="mb-1"
-          />
+          {/* Counsellor cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {MAIN_COUNSELLORS.map(c => {
               const cs = computeStats(allRows.filter(r => r.empName === c.key))
@@ -1718,7 +1630,6 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
                           {cs.connected} / {cs.outgoing} ({cs.connPct ?? 0}%)
                         </span>
                       </div>
-                      <p className="text-[11px] text-gray-400 mb-1">Answered outgoing calls ÷ total outgoing for this date</p>
                       <ProgressBar pct={cs.connPct} color={c.color} />
                       <div className="pt-2 space-y-1">
                         <StatChip label="Total calls" value={cs.total}        color={c.color} />
@@ -1863,9 +1774,6 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
       <div className="p-5 space-y-4">
         {subTab === "charts" && (
           <>
-            <p className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2.5">
-              Charts below use the selected date, section, source, and counsellor tab. Connected = outgoing call with duration &gt; 0 min.
-            </p>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <StageBarChart rows={visibleRows} />
               <SourceBarChart rows={visibleRows} />
