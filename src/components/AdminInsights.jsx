@@ -690,6 +690,8 @@ function ConnectedBySection({ rows }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
+  const [typeOpen, setTypeOpen] = useState({})
+
   const allCounseledRows = useMemo(
     () => pipelineRows.filter(r => isCounseled(r.stage)),
     [pipelineRows]
@@ -721,27 +723,32 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
 
   const typeRows = useMemo(() => {
     return ["Lead", "App Start"].map(type => {
-      const rows = counseledRows.filter(r => r.type === type)
+      const typeFiltered = counseledRows.filter(r => r.type === type)
+      const byCol = {}
+      ALL_COLS.forEach(c => {
+        const cRows = typeFiltered.filter(r => r.counsellor === c.key)
+        byCol[c.key] = {
+          hot:   cRows.filter(r => r.bucket === "hot").length,
+          warm:  cRows.filter(r => r.bucket === "warm").length,
+          cold:  cRows.filter(r => r.bucket === "cold").length,
+          total: cRows.length,
+        }
+      })
       return {
         type,
-        hot: rows.filter(r => r.bucket === "hot").length,
-        warm: rows.filter(r => r.bucket === "warm").length,
-        cold: rows.filter(r => r.bucket === "cold").length,
-        total: rows.length,
+        hot:   typeFiltered.filter(r => r.bucket === "hot").length,
+        warm:  typeFiltered.filter(r => r.bucket === "warm").length,
+        cold:  typeFiltered.filter(r => r.bucket === "cold").length,
+        total: typeFiltered.length,
+        byCol,
       }
     })
   }, [counseledRows])
 
-  const subStageRows = useMemo(() => {
-    const map = {}
-    counseledRows.forEach(r => {
-      const key = `${r.subStage}__${r.bucket}`
-      if (!map[key]) map[key] = { subStage: r.subStage, bucket: r.bucket, count: 0, lead: 0, app: 0 }
-      map[key].count += 1
-      if (r.type === "Lead") map[key].lead += 1
-      else map[key].app += 1
-    })
-    return Object.values(map).sort((a, b) => b.count - a.count).slice(0, 12)
+  const counsellorTotals = useMemo(() => {
+    const out = {}
+    ALL_COLS.forEach(c => { out[c.key] = counseledRows.filter(r => r.counsellor === c.key).length })
+    return out
   }, [counseledRows])
 
   const movementRows = [
@@ -837,63 +844,76 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
         </ResponsiveContainer>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-gray-800 mb-1">Lead vs App Start</div>
-          <div className="text-xs text-gray-400 mb-4">Active counselled pipeline split</div>
-          <div className="space-y-3">
-            {typeRows.map(row => {
-              const pct = counseledRows.length ? Math.round(row.total / counseledRows.length * 100) : 0
-              return (
-                <div key={row.type}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-gray-700">{row.type}</span>
-                    <span className="text-sm font-semibold text-gray-900">{row.total}</span>
-                  </div>
-                  <ProgressBar pct={pct} color={row.type === "App Start" ? "#8b5cf6" : "#3b82f6"} />
-                  <div className="text-xs text-gray-400 mt-1">{pct}% of active counselled</div>
-                </div>
-              )
-            })}
-          </div>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
+          <div className="text-xs text-gray-400 mt-0.5">Active counselled leads by type and interest bucket — click a row to expand</div>
         </div>
-
-        <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
-            <div className="text-xs text-gray-400 mt-0.5">Lead and App Start split by Hot, Warm and Cold</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Type</th>
-                  {PIPELINE_BUCKETS.map(b => (
-                    <th key={b.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500">{b.label}</th>
-                  ))}
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {typeRows.map(row => (
-                  <tr key={row.type} className="hover:bg-gray-50">
-                    <td className="px-4 py-3 font-medium text-gray-800">{row.type}</td>
-                    {PIPELINE_BUCKETS.map(b => (
-                      <td key={b.key} className="px-4 py-3 text-right text-gray-700">{row[b.key]}</td>
-                    ))}
-                    <td className="px-4 py-3 text-right font-semibold text-gray-900">{row.total}</td>
-                  </tr>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[600px]">
+            <thead className="bg-gray-50">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-40">Type / Bucket</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
+                {ALL_COLS.map(c => (
+                  <th key={c.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500"
+                      style={{ color: c.color }}>{c.short}</th>
                 ))}
-                <tr className="bg-gray-50">
-                  <td className="px-4 py-3 font-semibold text-gray-800">Total</td>
-                  {PIPELINE_BUCKETS.map(b => (
-                    <td key={b.key} className="px-4 py-3 text-right font-semibold text-gray-800">{bucketCounts[b.key] || 0}</td>
-                  ))}
-                  <td className="px-4 py-3 text-right font-bold text-gray-900">{counseledRows.length}</td>
-                </tr>
-              </tbody>
-            </table>
-          </div>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {typeRows.map(row => {
+                const isOpen = typeOpen[row.type]
+                const typeColor = row.type === "App Start" ? "#8b5cf6" : "#3b82f6"
+                return (
+                  <>
+                    <tr key={row.type}
+                        className="hover:bg-gray-50 cursor-pointer select-none"
+                        onClick={() => setTypeOpen(p => ({ ...p, [row.type]: !p[row.type] }))}>
+                      <td className="px-4 py-3 font-semibold" style={{ color: typeColor }}>
+                        <span className="text-gray-400 text-xs mr-2">{isOpen ? "▼" : "▶"}</span>
+                        {row.type}
+                      </td>
+                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{row.total}</td>
+                      {ALL_COLS.map(c => (
+                        <td key={c.key} className="px-4 py-3 text-right font-semibold"
+                            style={{ color: row.byCol[c.key]?.total ? c.color : "#d1d5db" }}>
+                          {row.byCol[c.key]?.total ?? 0}
+                        </td>
+                      ))}
+                    </tr>
+                    {isOpen && PIPELINE_BUCKETS.map(b => (
+                      <tr key={`${row.type}-${b.key}`} className="bg-gray-50">
+                        <td className="py-2.5 text-xs font-medium" style={{ paddingLeft: 36 }}>
+                          <span className={`px-2 py-0.5 rounded-full border text-xs ${b.bg} ${b.text} ${b.border}`}>
+                            {b.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-xs text-gray-700 font-medium">
+                          {row[b.key]}
+                        </td>
+                        {ALL_COLS.map(c => (
+                          <td key={c.key} className="px-4 py-2.5 text-right text-xs text-gray-500">
+                            {row.byCol[c.key]?.[b.key] ?? 0}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </>
+                )
+              })}
+              <tr className="bg-gray-50 border-t border-gray-200">
+                <td className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</td>
+                <td className="px-4 py-3 text-right font-bold text-gray-900">{counseledRows.length}</td>
+                {ALL_COLS.map(c => (
+                  <td key={c.key} className="px-4 py-3 text-right font-semibold"
+                      style={{ color: counsellorTotals[c.key] ? c.color : "#d1d5db" }}>
+                    {counsellorTotals[c.key] ?? 0}
+                  </td>
+                ))}
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
 
@@ -992,84 +1012,43 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <div className="text-sm font-semibold text-gray-800">Substage Bifurcation</div>
-            <div className="text-xs text-gray-400 mt-0.5">Top counselled substages by hot/warm/cold bucket</div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Substage</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Bucket</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Lead</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">App</th>
-                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {subStageRows.map(r => {
-                  const meta = PIPELINE_BUCKETS.find(b => b.key === r.bucket)
-                  return (
-                    <tr key={`${r.subStage}_${r.bucket}`} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 text-gray-800 max-w-[220px] truncate" title={r.subStage}>{r.subStage}</td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${meta.bg} ${meta.text} ${meta.border}`}>{meta.label}</span>
-                      </td>
-                      <td className="px-4 py-3 text-right text-gray-600">{r.lead}</td>
-                      <td className="px-4 py-3 text-right text-gray-600">{r.app}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-800">{r.count}</td>
-                    </tr>
-                  )
-                })}
-                {subStageRows.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">No counselled pipeline found.</td></tr>
-                )}
-              </tbody>
-            </table>
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-4 border-b border-gray-200">
+          <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
+          <div className="text-xs text-gray-400 mt-0.5">
+            {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
           </div>
         </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-200">
-            <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
-            <div className="text-xs text-gray-400 mt-0.5">
-              {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
-            </div>
-          </div>
-          <div className="divide-y divide-gray-100">
-            {movementRows.map((r, i) => {
-              const isGain = r.kind === "gained"
-              const isLoss = r.kind === "lost"
-              return (
-                <div key={`${r.id}_${i}`} className="px-5 py-3 flex items-start gap-3">
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full border ${
-                    isGain ? "bg-green-50 text-green-700 border-green-200" :
-                    isLoss ? "bg-red-50 text-red-700 border-red-200" :
-                    "bg-blue-50 text-blue-700 border-blue-200"
-                  }`}>
-                    {isGain ? "+1" : isLoss ? "-1" : "sub"}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-800 truncate">{r.name || r.phone || "Unknown lead"}</div>
-                    <div className="text-xs text-gray-500 mt-0.5">
-                      {r.kind === "substage"
-                        ? `${r.stage}: ${r.fromSubStage} → ${r.toSubStage}`
-                        : `${r.fromStage} → ${r.toStage}`}
-                    </div>
-                    <div className="text-xs text-gray-400 mt-0.5">{r.counsellor} · {r.type} · {r.source}</div>
+        <div className="divide-y divide-gray-100">
+          {movementRows.map((r, i) => {
+            const isGain = r.kind === "gained"
+            const isLoss = r.kind === "lost"
+            return (
+              <div key={`${r.id}_${i}`} className="px-5 py-3 flex items-start gap-3">
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${
+                  isGain ? "bg-green-50 text-green-700 border-green-200" :
+                  isLoss ? "bg-red-50 text-red-700 border-red-200" :
+                  "bg-blue-50 text-blue-700 border-blue-200"
+                }`}>
+                  {isGain ? "+1" : isLoss ? "-1" : "sub"}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-gray-800 truncate">{r.name || r.phone || "Unknown lead"}</div>
+                  <div className="text-xs text-gray-500 mt-0.5">
+                    {r.kind === "substage"
+                      ? `${r.stage}: ${r.fromSubStage} → ${r.toSubStage}`
+                      : `${r.fromStage} → ${r.toStage}`}
                   </div>
+                  <div className="text-xs text-gray-400 mt-0.5">{r.counsellor} · {r.type} · {r.source}</div>
                 </div>
-              )
-            })}
-            {movementRows.length === 0 && (
-              <div className="px-5 py-10 text-center text-sm text-gray-400">
-                {pipelineChanges.hasBaseline ? "No counselled stage or substage changes detected." : "Snapshot baseline created for future comparison."}
               </div>
-            )}
-          </div>
+            )
+          })}
+          {movementRows.length === 0 && (
+            <div className="px-5 py-10 text-center text-sm text-gray-400">
+              {pipelineChanges.hasBaseline ? "No counselled stage or substage changes detected." : "Snapshot baseline created for future comparison."}
+            </div>
+          )}
         </div>
       </div>
     </div>
