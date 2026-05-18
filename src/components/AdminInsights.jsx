@@ -27,6 +27,11 @@ const NAME_MAP = {
   "Prerna":         "Prerna Kaushik",
   "Prerna Kaushik": "Prerna Kaushik",
   "PRERNA":         "Prerna Kaushik",
+  // TODO: update these to match exact CRM column values once confirmed
+  "Rahul":          "Rahul",
+  "RAHUL":          "Rahul",
+  "Sanjana":        "Sanjana",
+  "SANJANA":        "Sanjana",
 }
 
 const SECTIONS = [
@@ -445,6 +450,28 @@ function robustJSONParse(text) {
 // SHARED UI PRIMITIVES
 // ─────────────────────────────────────────────────────────────────────────────
 
+function InfoBadge({ text }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="relative inline-block flex-shrink-0">
+      <button
+        onClick={e => { e.stopPropagation(); setOpen(o => !o) }}
+        className="w-5 h-5 rounded-full border border-gray-200 bg-gray-50 hover:bg-gray-200 text-gray-400 hover:text-gray-600 text-xs font-semibold flex items-center justify-center transition-colors leading-none"
+        title="What does this show?"
+      >i</button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
+          <div className="absolute right-0 top-7 z-20 w-72 bg-gray-900 text-white text-xs rounded-xl px-3.5 py-2.5 shadow-xl leading-relaxed">
+            <div className="absolute -top-1.5 right-2 w-3 h-3 bg-gray-900 rotate-45 rounded-sm" />
+            {text}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
 function KPICard({ label, value, sub, color, icon }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 flex flex-col gap-1">
@@ -521,7 +548,10 @@ function CallsBarChart({ allRows }) {
   })
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Counsellor</div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm font-semibold text-gray-800">Calls by Counsellor</div>
+        <InfoBadge text="Compares outgoing, connected (answered), and missed/rejected calls per counsellor for the selected date." />
+      </div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barGap={4} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -545,7 +575,10 @@ function CallTypeDonut({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <div className="text-sm font-semibold text-gray-800 mb-2">Call Type Breakdown</div>
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-sm font-semibold text-gray-800">Call Type Breakdown</div>
+        <InfoBadge text="Donut shows the split of all calls by type — outgoing (dialled by counsellor), incoming (lead called back), missed, and rejected. Hover a segment to see the count." />
+      </div>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
@@ -590,7 +623,10 @@ function StageBarChart({ rows }) {
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <div className="text-sm font-semibold text-gray-800 mb-4">Stage Breakdown</div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm font-semibold text-gray-800">Stage Breakdown</div>
+        <InfoBadge text="Counts all calls made today grouped by the lead's current CRM stage (e.g. Counseled, NCE, Not Interested). Helps see which stage is getting the most attention." />
+      </div>
       <div className="space-y-3">
         {data.map(d => (
           <div key={d.fullName}>
@@ -622,7 +658,10 @@ function SourceBarChart({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <div className="text-sm font-semibold text-gray-800 mb-4">Calls by Source</div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm font-semibold text-gray-800">Calls by Source</div>
+        <InfoBadge text="Total calls made today to leads from each acquisition source (e.g. Facebook, Google, Organic). Useful to spot which source is driving the most activity." />
+      </div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barCategoryGap="35%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -669,7 +708,10 @@ function ConnectedBySection({ rows }) {
   if (!data.length) return null
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-      <div className="text-sm font-semibold text-gray-800 mb-4">Connected by Section</div>
+      <div className="flex items-center justify-between mb-4">
+        <div className="text-sm font-semibold text-gray-800">Connected by Section</div>
+        <InfoBadge text="Outgoing calls vs. connected calls (lead answered) split across the 4 dashboard tabs — App Followup, App New, Followup Leads, Fresh Leads. Shows where connection rates are strongest." />
+      </div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} barGap={3} barCategoryGap="30%">
           <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
@@ -822,13 +864,16 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
             <div className="text-sm font-semibold text-gray-800">Pipeline by Counsellor</div>
             <div className="text-xs text-gray-400 mt-0.5">Hot, warm and cold split for active counselled leads</div>
           </div>
-          <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-            net > 0 ? "bg-green-50 text-green-700 border-green-200" :
-            net < 0 ? "bg-red-50 text-red-700 border-red-200" :
-            "bg-gray-50 text-gray-600 border-gray-200"
-          }`}>
-            Counselled {net > 0 ? `+${net}` : net}
-          </span>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <InfoBadge text="Stacked bar showing each counsellor's active counselled leads split into Hot / Warm / Cold. Hot = strong signals in notes/substage, Cold = low intent. Converted leads are excluded." />
+            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
+              net > 0 ? "bg-green-50 text-green-700 border-green-200" :
+              net < 0 ? "bg-red-50 text-red-700 border-red-200" :
+              "bg-gray-50 text-gray-600 border-gray-200"
+            }`}>
+              Counselled {net > 0 ? `+${net}` : net}
+            </span>
+          </div>
         </div>
         <ResponsiveContainer width="100%" height={260}>
           <BarChart data={byCounsellor} barCategoryGap="30%">
@@ -845,9 +890,12 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200">
-          <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
-          <div className="text-xs text-gray-400 mt-0.5">Active counselled leads by type and interest bucket — click a row to expand</div>
+        <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Pipeline Type Bifurcation</div>
+            <div className="text-xs text-gray-400 mt-0.5">Active counselled leads by type and interest bucket — click a row to expand</div>
+          </div>
+          <InfoBadge text="Shows counselled leads split by record type (Lead vs App Start) and interest level. Click Lead or App Start to reveal Hot / Warm / Cold counts per counsellor. Total row sums across both types." />
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm min-w-[600px]">
@@ -924,6 +972,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
             <div className="text-xs text-gray-400 mt-0.5">Connected calls from active counselled pipeline on {date}</div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <InfoBadge text="Counselled leads (including already-converted) who had at least one connected call today. Ranked by Paid App signal first, then Hot → Warm → Cold. Max 20 shown." />
             <span className="text-xs font-semibold px-3 py-1 rounded-full bg-green-50 text-green-700 border border-green-200">
               {spokenPipeline.length} spoken
             </span>
@@ -1013,11 +1062,14 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
       </div>
 
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-4 border-b border-gray-200">
-          <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
-          <div className="text-xs text-gray-400 mt-0.5">
-            {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
+        <div className="px-5 py-4 border-b border-gray-200 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">Pipeline Changes</div>
+            <div className="text-xs text-gray-400 mt-0.5">
+              {pipelineChanges.hasBaseline ? "Compared with last saved admin snapshot" : "Baseline saved. Changes will appear after the next data update."}
+            </div>
           </div>
+          <InfoBadge text="+1 = lead newly moved into Counseled. −1 = lead moved out of Counseled. 'sub' = substage changed within Counseled. Compared against the snapshot saved on your last page load." />
         </div>
         <div className="divide-y divide-gray-100">
           {movementRows.map((r, i) => {
@@ -1071,10 +1123,13 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
             {convertedCount ? ` · ${convertedCount} converted excluded` : ""}
           </div>
         </div>
-        <button onClick={onOpenPipeline}
-                className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
-          Open Pipeline
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <InfoBadge text="Count of leads currently in the Counseled stage across Lead Dump and App Start sheets. Converted (payment completed) leads are excluded. Hot/Warm/Cold inferred from substage and notes keywords." />
+          <button onClick={onOpenPipeline}
+                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
+            Open Pipeline
+          </button>
+        </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="rounded-lg border border-green-200 bg-green-50 p-4">
@@ -1765,6 +1820,10 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         )}
         {subTab === "table" && (
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+              <div className="text-sm font-semibold text-gray-800">Pivot Table</div>
+              <InfoBadge text="Rows = metrics (volume, connection quality, stage breakdown, duration). Columns = Total + each counsellor. Click 'Outgoing' to expand by section. Click a stage row to expand substages." />
+            </div>
             <PivotTable rows={visibleRows} />
           </div>
         )}
