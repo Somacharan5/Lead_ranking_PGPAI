@@ -134,20 +134,78 @@ async function pollStatus(apiKey, jobId, pollIntervalMs) {
     })
     const data = await res.json()
     if (!res.ok) throw new Error(`Status check failed ${res.status}: ${JSON.stringify(data)}`)
-    const status = data.status || data.job_status
-    console.log(`  Job ${jobId} status: ${status}`)
-    if (status === 'completed' || status === 'COMPLETED') return data
-    if (status === 'failed' || status === 'FAILED') throw new Error(`Job ${jobId} failed: ${JSON.stringify(data)}`)
+    
+    // Sarvam API returns an array of file statuses for the job
+    if (Array.isArray(data)) {
+      const allDone = data.every(item => item.state === 'Success' || item.state === 'Failed' || item.state === 'Completed' || item.status === 'Completed')
+      const anyFailed = data.some(item => item.state === 'Failed' || item.status === 'Failed')
+      
+      console.log(`  Job ${jobId} status: ${data.filter(i => i.state === 'Success').length}/${data.length} completed`)
+      
+      if (allDone) {
+        if (anyFailed && data.length === 1) throw new Error(`Job ${jobId} failed: ${JSON.stringify(data)}`)
+        return data
+      }
+    } else {
+      const status = data.status || data.job_status || data.state
+      console.log(`  Job ${jobId} status: ${status}`)
+      if (status === 'completed' || status === 'COMPLETED' || status === 'Success') return data
+      if (status === 'failed' || status === 'FAILED') throw new Error(`Job ${jobId} failed: ${JSON.stringify(data)}`)
+    }
   }
 }
 
-async function getResults(apiKey, jobId) {
-  const res = await fetch(`${BASE_URL}/${jobId}/download-results`, {
-    headers: { 'api-subscription-key': apiKey },
+async function getResults(apiKey, jobId, resultData) {
+  // resultData is the array returned by status
+  const outputFiles = []
+  const fileToOriginalMap = {} // map output filename -> original mp3 name
+  
+  resultData.forEach(item => {
+    if (item.state === 'Success' && item.outputs && item.outputs.length > 0) {
+      const outName = item.outputs[0].file_name
+      outputFiles.push(outName)
+      if (item.inputs && item.inputs.length > 0) {
+        fileToOriginalMap[outName] = item.inputs[0].file_name
+      }
+    }
+  })
+  
+  if (outputFiles.length === 0) return []
+
+  // 1. Get download URLs
+  const res = await fetch(`${BASE_URL}/download-files`, {
+    method: 'POST',
+    headers: {
+      'api-subscription-key': apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      job_id: jobId,
+      files: outputFiles
+    })
   })
   const data = await res.json()
-  if (!res.ok) throw new Error(`Download results failed ${res.status}: ${JSON.stringify(data)}`)
-  return data // array of { filename, transcript, ... }
+  if (!res.ok) throw new Error(`Get download URLs failed ${res.status}: ${JSON.stringify(data)}`)
+  
+  const downloadUrls = data.download_urls || {}
+  const finalResults = []
+
+  // 2. Fetch each transcript
+  for (const outName of outputFiles) {
+    const urlObj = downloadUrls[outName]
+    if (urlObj && urlObj.file_url) {
+      const trRes = await fetch(urlObj.file_url)
+      if (trRes.ok) {
+        const trData = await trRes.json()
+        finalResults.push({
+          filename: fileToOriginalMap[outName] || outName,
+          transcript: trData.transcript || trData.text || ''
+        })
+      }
+    }
+  }
+  
+  return finalResults
 }
 
 // ─── main ────────────────────────────────────────────────────────────────────
@@ -221,10 +279,10 @@ async function main() {
       // 5. Get results
       let results
       try {
-        results = await getResults(apiKey, jobId)
-      } catch {
-        // Some APIs embed results in the status response
-        results = resultData.results || resultData.transcriptions || []
+        results = await getResults(apiKey, jobId, resultData)
+      } catch (err) {
+        console.error(`  ⚠️ Failed to get results: ${err.message}`)
+        results = []
       }
 
       // 6. Write transcripts — match by filename
