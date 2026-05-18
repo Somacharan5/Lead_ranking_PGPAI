@@ -12,6 +12,9 @@ const MAIN_COUNSELLORS = [
   { key: "Jasmeet Kaur",   short: "Jasmeet", color: "#3b82f6", bg: "#eff6ff", ring: "#93c5fd" },
   { key: "Komal Pandey",   short: "Komal",   color: "#8b5cf6", bg: "#f5f3ff", ring: "#c4b5fd" },
   { key: "Prerna Kaushik", short: "Prerna",  color: "#ec4899", bg: "#fdf2f8", ring: "#f9a8d4" },
+  // TODO: update key values to match exact CRM column U / column AR values once confirmed
+  { key: "Rahul",          short: "Rahul",   color: "#f43f5e", bg: "#fff1f2", ring: "#fda4af" },
+  { key: "Sanjana",        short: "Sanjana", color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
 ]
 const ALL_COLS = [
   ...MAIN_COUNSELLORS,
