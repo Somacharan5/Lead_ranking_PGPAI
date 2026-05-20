@@ -1875,9 +1875,10 @@ export default function AdminInsights() {
           fetchSheetData('Calls History', 'A:V'),
           fetchSheetData('Lead Dump', 'A:BW'),
           fetchSheetData('Followup Sheet - LEAD', 'A:BW'),
-          fetchSheetData('App Start Dump', 'A:EU'),
+          fetchSheetData('New - App start', 'A:EU'),
           fetchSheetData('Followup sheet - App start', 'A:EU'),
         ])
+        if (callsRaw.length === 0) throw new Error("Calls History sheet returned no data — check the sheet name, sharing settings, and API key.")
         const { subStageMap, notesMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap)
         const pipeline = buildPipelineRows(leadRaw, followupLeadRaw, appRaw, appFollowupRaw)

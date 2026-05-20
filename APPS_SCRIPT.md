@@ -1,8 +1,9 @@
 # 🔧 Google Apps Script Setup
 
-Handles two things:
+Handles three things:
 1. **Admin "Force Refresh All"** button — manually pushes a refresh signal to all dashboards
 2. **Daily 10:30 AM auto-refresh** — automatically refreshes all counsellor dashboards every morning
+3. **Campaign Blackout Windows** — add/remove campaign hold periods from the admin UI
 
 ---
 
@@ -31,7 +32,56 @@ Handles two things:
 ```javascript
 // ─── Manual trigger (called by admin's Force Refresh button) ───────────────
 function doGet(e) {
+  const action = e && e.parameter && e.parameter.action;
+
+  if (action === 'addBlackout') {
+    return addBlackoutRow(
+      e.parameter.campaign || '',
+      e.parameter.source   || '',
+      e.parameter.startDate || '',
+      e.parameter.endDate   || ''
+    );
+  }
+
+  if (action === 'deleteBlackout') {
+    return deleteBlackoutRow(Number(e.parameter.rowIndex || 0));
+  }
+
   return writeRefreshTimestamp();
+}
+
+// ─── Blackout: append a row to "Campaign Blackouts" tab ──────────────────
+function addBlackoutRow(campaign, source, startDate, endDate) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let sheet = ss.getSheetByName('Campaign Blackouts');
+    if (!sheet) {
+      sheet = ss.insertSheet('Campaign Blackouts');
+      sheet.appendRow(['Campaign', 'Source', 'Start Date', 'End Date']);
+    }
+    sheet.appendRow([campaign, source, startDate, endDate]);
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+}
+
+// ─── Blackout: delete a row by data-row index (0 = first data row) ────────
+function deleteBlackoutRow(rowIndex) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheet = ss.getSheetByName('Campaign Blackouts');
+    if (sheet && rowIndex >= 0) {
+      sheet.deleteRow(rowIndex + 2); // +1 for header, +1 for 1-based index
+    }
+    return ContentService.createTextOutput(JSON.stringify({ success: true }))
+      .setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput(JSON.stringify({ success: false, error: err.toString() }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
 }
 
 // ─── Scheduled trigger (runs daily at 10:30 AM IST) ──────────────────────

@@ -18,14 +18,14 @@ export async function fetchSheetData(sheetName, range = 'A:BZ') {
     const response = await fetch(url)
 
     if (!response.ok) {
-      throw new Error(`Failed to fetch ${sheetName}: ${response.statusText}`)
+      throw new Error(`Failed to fetch "${sheetName}": ${response.status} ${response.statusText}`)
     }
 
     const data = await response.json()
     return data.values || []
   } catch (error) {
     console.error(`Error fetching ${sheetName}:`, error)
-    return []
+    throw error
   }
 }
 

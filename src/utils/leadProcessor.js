@@ -28,6 +28,52 @@ import { fetchSheetData, getCol } from './sheetsApi'
 // ============================================================================
 
 // ============================================================================
+// CAMPAIGN BLACKOUT HELPERS
+// ============================================================================
+
+export function parseBlackouts(rows) {
+  if (!rows || rows.length < 2) return []
+  return rows.slice(1)
+    .map(row => ({
+      campaign:  String(row[0] || '').trim(),
+      source:    String(row[1] || '').trim(),
+      startDate: row[2] ? String(row[2]).trim() : '',
+      endDate:   row[3] ? String(row[3]).trim() : '',
+    }))
+    .filter(b => b.campaign)
+}
+
+function isBlackedOut(lead, blackouts) {
+  if (!blackouts || blackouts.length === 0) return false
+  const today = startOfDayBlackout(new Date())
+  return blackouts.some(b => {
+    if (b.campaign && lead.campaign !== b.campaign) return false
+    if (b.source && lead.source !== b.source) return false
+    const start = b.startDate ? parseDateBlackout(b.startDate) : null
+    const end   = b.endDate   ? parseDateBlackout(b.endDate)   : null
+    if (start && today < startOfDayBlackout(start)) return false  // window hasn't started yet
+    if (end   && today > startOfDayBlackout(end))   return false  // window ended — show leads again
+    return true
+  })
+}
+
+// Separate copies used by blackout logic only (avoids hoisting dependency on parseDate/startOfDay
+// which are declared later in the file).
+function parseDateBlackout(val) {
+  if (!val) return null
+  const s = String(val).trim()
+  const n = Number(s)
+  if (!isNaN(n) && n > 40000 && n < 60000) return new Date((Math.floor(n) - 25569) * 86400 * 1000)
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/)
+  if (iso) return new Date(parseInt(iso[1]), parseInt(iso[2]) - 1, parseInt(iso[3]))
+  const d = new Date(s)
+  return isNaN(d) ? null : d
+}
+function startOfDayBlackout(date) {
+  const d = new Date(date); d.setHours(0, 0, 0, 0); return d
+}
+
+// ============================================================================
 // DATE HELPERS
 // ============================================================================
 
@@ -435,12 +481,17 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
 // MAIN ENTRY POINT
 // ============================================================================
 export async function getLeadsForCounsellor(counsellorName) {
-  const [leadDump, followupLead, newAppStart, appFollowup] = await Promise.all([
+  const [leadDump, followupLead, newAppStart, appFollowup, blackoutsRaw] = await Promise.all([
     fetchSheetData('Lead Dump', 'A:BW'),
     fetchSheetData('Followup Sheet - LEAD', 'A:BW'),
     fetchSheetData('New - App start', 'A:EU'),
     fetchSheetData('Followup sheet - App start', 'A:EU'),
+    // Graceful: sheet may not exist yet — treat as empty (no blackouts)
+    fetchSheetData('Campaign Blackouts', 'A:D').catch(() => []),
   ])
+
+  const blackouts = parseBlackouts(blackoutsRaw)
+  const applyBlackout = leads => leads.filter(l => !isBlackedOut(l, blackouts))
 
   const fresh = getFreshLeads(leadDump, counsellorName)
   const followup = getFollowupLeads(followupLead, counsellorName)
@@ -448,10 +499,10 @@ export async function getLeadsForCounsellor(counsellorName) {
   const appFu = getAppFollowup(appFollowup, counsellorName)
 
   const allocation = allocateLeads(
-    fresh.leads,
-    followup.leads,
-    newApp.leads,
-    appFu.leads,
+    applyBlackout(fresh.leads),
+    applyBlackout(followup.leads),
+    applyBlackout(newApp.leads),
+    applyBlackout(appFu.leads),
     300  // 300 leads per day (89 fresh / 73 followup / 55 new app / 83 app followup)
   )
 
