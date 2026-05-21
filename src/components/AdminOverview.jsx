@@ -98,6 +98,10 @@ export default function AdminOverview() {
     loadBlackouts()
   }, [])
 
+  useEffect(() => {
+    if (view === 'blackouts') loadBlackouts()
+  }, [view])
+
   const loadOne = async (name, i, force = false) => {
     setRows(prev => {
       const next = [...prev]; next[i] = { ...next[i], loading: true, error: false }; return next
@@ -145,7 +149,10 @@ export default function AdminOverview() {
     setRefreshing(false)
   }
 
-  const switchView = (v) => { setView(prev => prev === v ? 'overview' : v); setSelectedBlackout(null) }
+  const switchView = (v) => {
+    setView(prev => prev === v ? 'overview' : v)
+    setSelectedBlackout(null)
+  }
 
   const totalAll      = rows.reduce((sum, r) => sum + (r.data?.total ?? 0), 0)
   const spokenAll     = rows.reduce((sum, r) => sum + (r.data?.spokenToday?.total ?? 0), 0)
@@ -381,15 +388,29 @@ function BlackoutListPage({ blackouts, loading, onBack, onSelect, onReload, onBl
     if (form.startDate > form.endDate)      { flash('Start date must be before end date.'); return }
     setSaving(true)
     try {
-      if (APPS_SCRIPT_URL) {
-        const url = `${APPS_SCRIPT_URL}?action=addBlackout`
-          + `&campaign=${encodeURIComponent(form.campaign.trim())}`
-          + `&source=${encodeURIComponent(form.source.trim())}`
-          + `&startDate=${encodeURIComponent(form.startDate)}`
-          + `&endDate=${encodeURIComponent(form.endDate)}`
-        await fetch(url, { method: 'GET', mode: 'no-cors' })
-        await new Promise(r => setTimeout(r, 1500))
+      const { fetchSheetData } = await import('../utils/sheetsApi')
+      const before = await fetchSheetData('Campaign Blackouts', 'A:D').catch(() => [])
+      const beforeCount = before.length
+
+      if (!APPS_SCRIPT_URL) {
+        flash('VITE_APPS_SCRIPT_URL is not set in .env — blackout cannot be saved.')
+        return
       }
+
+      const url = `${APPS_SCRIPT_URL}?action=addBlackout`
+        + `&campaign=${encodeURIComponent(form.campaign.trim())}`
+        + `&source=${encodeURIComponent(form.source.trim())}`
+        + `&startDate=${encodeURIComponent(form.startDate)}`
+        + `&endDate=${encodeURIComponent(form.endDate)}`
+      await fetch(url, { method: 'GET', mode: 'no-cors' })
+      await new Promise(r => setTimeout(r, 3000))
+
+      const after = await fetchSheetData('Campaign Blackouts', 'A:D').catch(() => [])
+      if (after.length <= beforeCount) {
+        flash('⚠️ Apps Script did not write the row. Go to Apps Script → Deploy → Manage deployments → Edit → New version → Deploy, then try again.')
+        return
+      }
+
       bustCounsellorCaches()
       await onReload()
       onBlackoutChange()
@@ -409,7 +430,7 @@ function BlackoutListPage({ blackouts, loading, onBack, onSelect, onReload, onBl
       if (APPS_SCRIPT_URL) {
         const url = `${APPS_SCRIPT_URL}?action=deleteBlackout&rowIndex=${b.rowIndex}`
         await fetch(url, { method: 'GET', mode: 'no-cors' })
-        await new Promise(r => setTimeout(r, 1500))
+        await new Promise(r => setTimeout(r, 3000))
       }
       bustCounsellorCaches()
       await onReload()
@@ -554,7 +575,7 @@ function BlackoutListPage({ blackouts, loading, onBack, onSelect, onReload, onBl
 
 function extractBlackoutLeads(rows, campaign, source, type) {
   const isLead    = type === 'Lead'
-  const campIdx   = isLead ? 8  : 20
+  const campIdx   = isLead ? 7  : 22   // col H for Lead Dump, col W for App Start
   const srcIdx    = isLead ? 6  : 18
   const nameIdx   = isLead ? 0  : 12
   const emailIdx  = isLead ? 1  : 13
@@ -563,9 +584,12 @@ function extractBlackoutLeads(rows, campaign, source, type) {
   const stageIdx  = isLead ? 21 : 46
   const regIdx    = isLead ? 18 : 16
 
+  const campLower = campaign.toLowerCase()
+  const srcLower  = (source || '').toLowerCase()
+
   return rows.slice(1).filter(row => {
-    if (String(row[campIdx] || '').trim() !== campaign) return false
-    if (source && String(row[srcIdx] || '').trim() !== source) return false
+    if (String(row[campIdx] || '').trim().toLowerCase() !== campLower) return false
+    if (source && String(row[srcIdx] || '').trim().toLowerCase() !== srcLower) return false
     return true
   }).map(row => ({
     name:        String(row[nameIdx]   || '').trim(),
@@ -673,7 +697,7 @@ function BlackoutDetailPage({ blackout, onBack }) {
         <div className="bg-white rounded-xl border border-gray-200 py-20 text-center">
           <div className="text-4xl mb-3">🔍</div>
           <p className="text-sm font-medium text-gray-600">No leads found for this campaign</p>
-          <p className="text-xs text-gray-400 mt-1">The campaign name must match exactly what's in the CRM (col I for leads, col U for app starts).</p>
+          <p className="text-xs text-gray-400 mt-1">The campaign name must match exactly what's in the CRM (col H for leads, col W for app starts).</p>
         </div>
       )}
 

@@ -16,7 +16,7 @@ Handles three things:
 | | A | B |
 |---|---|---|
 | 1 | Last Refresh Trigger | 2026-05-08T00:00:00Z |
-| 2 | Refresh Timestamp | *(leave empty)* |
+| 2 | Refresh Timestamp | *(leave empty)* 
 
 ---
 

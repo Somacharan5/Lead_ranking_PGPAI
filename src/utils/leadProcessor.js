@@ -46,9 +46,11 @@ export function parseBlackouts(rows) {
 function isBlackedOut(lead, blackouts) {
   if (!blackouts || blackouts.length === 0) return false
   const today = startOfDayBlackout(new Date())
+  const leadCampaign = String(lead.blackoutCampaign || lead.campaign || '').trim().toLowerCase()
+  const leadSource   = String(lead.source || '').trim().toLowerCase()
   return blackouts.some(b => {
-    if (b.campaign && lead.campaign !== b.campaign) return false
-    if (b.source && lead.source !== b.source) return false
+    if (b.campaign && leadCampaign !== b.campaign.toLowerCase()) return false
+    if (b.source   && leadSource   !== b.source.toLowerCase())   return false
     const start = b.startDate ? parseDateBlackout(b.startDate) : null
     const end   = b.endDate   ? parseDateBlackout(b.endDate)   : null
     if (start && today < startOfDayBlackout(start)) return false  // window hasn't started yet
@@ -213,6 +215,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     medium: getCol(row, 'H'),
     counsellorLastActivity: getCol(row, 'AC'),
     campaign: getCol(row, 'I'),
+    blackoutCampaign: getCol(row, 'H'),
     stage: getCol(row, 'V'),
     subStage: getCol(row, 'W'),
     notes: getCol(row, 'AH'),
@@ -284,6 +287,7 @@ export function getFollowupLeads(followupLeadRows, counsellorName) {
       medium: getCol(row, 'H'),
       counsellorLastActivity: getCol(row, 'AC'),
       campaign: getCol(row, 'I'),
+      blackoutCampaign: getCol(row, 'H'),
       stage: getCol(row, 'V'),
       subStage: getCol(row, 'W'),
       notes: getCol(row, 'AH'),
@@ -338,6 +342,7 @@ export function getNewAppStart(newAppStartRows, counsellorName) {
       medium: getCol(row, 'T'),
       counsellorLastActivity: getCol(row, 'BG'),
       campaign: getCol(row, 'U'),
+      blackoutCampaign: getCol(row, 'W'),
       stage: getCol(row, 'AU'),
       subStage: getCol(row, 'AV'),
       notes: getCol(row, 'BM'),
@@ -403,6 +408,7 @@ export function getAppFollowup(appFollowupRows, counsellorName) {
       medium: getCol(row, 'T'),
       counsellorLastActivity: getCol(row, 'BG'),
       campaign: getCol(row, 'U'),
+      blackoutCampaign: getCol(row, 'W'),
       stage: getCol(row, 'AU'),
       subStage: getCol(row, 'AV'),
       notes: getCol(row, 'BM'),
