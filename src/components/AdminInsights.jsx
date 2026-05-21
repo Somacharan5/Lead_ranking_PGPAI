@@ -117,6 +117,12 @@ function sameDay(d1, d2) {
 function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
 function phone10(v) { return String(v || "").replace(/\D/g, "").slice(-10) }
 function cellText(v) { return v === null || v === undefined ? "" : String(v).trim() }
+function parseDurationMins(v) {
+  const s = String(v || "").trim()
+  const m = s.match(/(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/)
+  if (!m || !s) return 0
+  return (parseInt(m[1] || 0) * 60) + parseInt(m[2] || 0) + (parseInt(m[3] || 0) / 60)
+}
 function hashText(text) {
   let h = 0
   for (let i = 0; i < text.length; i++) h = Math.imul(31, h) + text.charCodeAt(i) | 0
@@ -307,7 +313,7 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
       stageType:    cellText(row[15]),
       source:       cellText(row[19]),
       leadStage:    cellText(row[20]),
-      durationMins: parseFloat(row[21]) || 0,
+      durationMins: parseDurationMins(row[9]),
       subStage:     subStageMap[p] || "",
     }
   })
