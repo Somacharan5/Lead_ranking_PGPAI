@@ -1862,7 +1862,7 @@ export default function AdminInsights() {
     netCounseled: 0,
   })
   const [detailSubTab, setDetailSubTab] = useState("charts")
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState("")
 
   useEffect(() => {
