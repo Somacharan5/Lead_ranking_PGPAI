@@ -265,31 +265,46 @@ function comparePipelineSnapshots(prevMap, currentRows) {
 // DATA LAYER
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Returns { subStageMap, notesMap } — both keyed by last-10-digit phone number.
-// Lead Dump:      col C (idx 2) = Mobile, col W (idx 22) = SubStage, col AH (idx 33) = Notes
-// App Start Dump: col O (idx 14) = Mobile, col AV (idx 47) = SubStage, col BM (idx 64) = Notes
+// Returns { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap }
+// keyed by last-10-digit phone number.
+// Calls History cols P/T/U (stage/source/leadStage) are never populated by the
+// call system, so we join from Lead Dump + App Start by phone instead.
+//
+// Lead Dump:  col C(2)=Mobile, col G(6)=Source, col V(21)=Stage, col W(22)=SubStage, col AH(33)=Notes
+// App Start:  col O(14)=Mobile, col S(18)=Source, col AU(46)=Stage, col AV(47)=SubStage, col BM(64)=Notes
+// App Start takes priority over Lead if same phone appears in both (higher funnel stage).
 export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
-  const subStageMap = {}, notesMap = {}
+  const subStageMap = {}, notesMap = {}, stageTypeMap = {}, leadStageMap = {}, sourceMap = {}
 
   leadDumpRows.slice(1).forEach(row => {
     const p = phone10(row[2])
     if (!p) return
-    const sub  = cellText(row[22])
-    const note = cellText(row[33])
-    if (sub)  subStageMap[p] = sub
-    if (note) notesMap[p]    = note
+    const sub   = cellText(row[22])
+    const note  = cellText(row[33])
+    const stage = cellText(row[21])
+    const src   = cellText(row[6])
+    if (sub)   subStageMap[p]  = sub
+    if (note)  notesMap[p]     = note
+    stageTypeMap[p] = 'Lead'
+    if (stage) leadStageMap[p] = stage
+    if (src)   sourceMap[p]    = src
   })
 
   appStartRows.slice(1).forEach(row => {
     const p = phone10(row[14])
     if (!p) return
-    const sub  = cellText(row[47])
-    const note = cellText(row[64])
-    if (sub  && !subStageMap[p]) subStageMap[p] = sub
-    if (note && !notesMap[p])    notesMap[p]    = note
+    const sub   = cellText(row[47])
+    const note  = cellText(row[64])
+    const stage = cellText(row[46])
+    const src   = cellText(row[18])
+    if (sub)  subStageMap[p]  = sub
+    if (note) notesMap[p]     = note
+    stageTypeMap[p] = 'App Start'
+    if (stage) leadStageMap[p] = stage
+    if (src)   sourceMap[p]    = src
   })
 
-  return { subStageMap, notesMap }
+  return { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap }
 }
 
 // Keep for backward compat
@@ -297,7 +312,7 @@ export function buildSubStageMap(leadDumpRows = [], appStartRows = []) {
   return buildLeadMaps(leadDumpRows, appStartRows).subStageMap
 }
 
-export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMap = {}) {
+export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMap = {}, stageTypeMap = {}, leadStageMap = {}, sourceMap = {}) {
   const target = typeof targetDate === "string" ? new Date(targetDate) : targetDate
   return rawRows.slice(1).map(row => {
     const p = phone10(row[7])
@@ -306,13 +321,11 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
       toNumber:     p,
       callType:     cellText(row[8]),
       callDate:     row[10],
-      // Notes from Lead Dump / App Start Dump (joined by phone) — CRM notes written
-      // by the counsellor on the lead record, not the brief call-log note in col M.
       notes:        notesMap[p] || cellText(row[12]),
       audioUrl:     row[14] || "",
-      stageType:    cellText(row[15]),
-      source:       cellText(row[19]),
-      leadStage:    cellText(row[20]),
+      stageType:    stageTypeMap[p]  || cellText(row[15]),
+      source:       sourceMap[p]     || cellText(row[19]),
+      leadStage:    leadStageMap[p]  || cellText(row[20]),
       durationMins: parseDurationMins(row[9]),
       subStage:     subStageMap[p] || "",
     }
@@ -1885,8 +1898,8 @@ export default function AdminInsights() {
           fetchSheetData('Followup sheet - App start', 'A:EU'),
         ])
         if (callsRaw.length === 0) throw new Error("Calls History sheet returned no data — check the sheet name, sharing settings, and API key.")
-        const { subStageMap, notesMap } = buildLeadMaps(leadRaw, appRaw)
-        const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap)
+        const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
+        const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
         const pipeline = buildPipelineRows(leadRaw, followupLeadRaw, appRaw, appFollowupRaw)
         const activePipeline = pipeline.filter(row => !isPaymentCompleted(row.paymentStatus))
         const snapshotKey = "aias_admin_pipeline_snapshot_v1"

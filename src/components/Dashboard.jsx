@@ -80,15 +80,23 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
     try {
       const result = await getLeadsForCounsellor(selectedCounsellor)
       const now = new Date()
-      
+
       localStorage.setItem(cacheKey, JSON.stringify(result))
       localStorage.setItem(cacheTimeKey, now.toISOString())
-      
+
       setData(result)
       setLastRefresh(now)
     } catch (err) {
-      setError('Failed to load leads. Please check your connection.')
-      console.error(err)
+      // API down — fall back to any cached data so counsellors can still work
+      const staleCached = localStorage.getItem(cacheKey)
+      const staleTime   = localStorage.getItem(cacheTimeKey)
+      if (staleCached && staleTime) {
+        setData(JSON.parse(staleCached))
+        setLastRefresh(new Date(staleTime))
+        setError('⚠️ Live data unavailable — showing cached leads from ' + new Date(staleTime).toLocaleString('en-IN') + '. Refresh to retry.')
+      } else {
+        setError('Google Sheets is temporarily unavailable. No cached data found. Please try again in a few minutes.')
+      }
     }
     setLoading(false)
   }
