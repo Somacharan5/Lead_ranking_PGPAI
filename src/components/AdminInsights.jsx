@@ -183,17 +183,18 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     rows.push(item)
   }
 
-  // TODO: paymentStatusIdx values need verification against the actual sheet columns.
-  // Lead Dump col R (idx 17) and App Start Dump col C (idx 2) are not in the confirmed
-  // column map. If wrong, converted leads will not be filtered out of the pipeline.
+  // Lead Dump — all leads (fresh + followup) in one sheet
+  // New column positions: BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, AJ(35)=PaymentStatus, CG(84)=Priority
   leadDumpRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: null, paymentStatusIdx: 17,
+    counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
   }))
+  // followupLeadRows is the same sheet — deduplication by phone/email prevents double-counting
   followupLeadRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 20, stageIdx: 21, subStageIdx: 22, notesIdx: 33, priorityIdx: 74, paymentStatusIdx: 17,
+    counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
   }))
+  // App Start Dump — all app starts (new + followup) in one sheet — columns unchanged
   appStartRows.slice(1).forEach(row => add(row, {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
     counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null, paymentStatusIdx: 2,
@@ -267,10 +268,10 @@ function comparePipelineSnapshots(prevMap, currentRows) {
 
 // Returns { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap }
 // keyed by last-10-digit phone number.
-// Calls History cols P/T/U (stage/source/leadStage) are never populated by the
-// call system, so we join from Lead Dump + App Start by phone instead.
+// Call history cols P/T/U (stage/source/leadStage) are not always populated by
+// the call system, so we join from Lead Dump + App Start by phone instead.
 //
-// Lead Dump:  col C(2)=Mobile, col G(6)=Source, col V(21)=Stage, col W(22)=SubStage, col AH(33)=Notes
+// Lead Dump:  col C(2)=Mobile, col G(6)=Source, col BD(55)=Stage, col BE(56)=SubStage, col BP(67)=Notes
 // App Start:  col O(14)=Mobile, col S(18)=Source, col AU(46)=Stage, col AV(47)=SubStage, col BM(64)=Notes
 // App Start takes priority over Lead if same phone appears in both (higher funnel stage).
 export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
@@ -279,9 +280,9 @@ export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
   leadDumpRows.slice(1).forEach(row => {
     const p = phone10(row[2])
     if (!p) return
-    const sub   = cellText(row[22])
-    const note  = cellText(row[33])
-    const stage = cellText(row[21])
+    const sub   = cellText(row[56])
+    const note  = cellText(row[67])
+    const stage = cellText(row[55])
     const src   = cellText(row[6])
     if (sub)   subStageMap[p]  = sub
     if (note)  notesMap[p]     = note
@@ -1890,17 +1891,16 @@ export default function AdminInsights() {
       setLoading(true); setError("")
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
-        const [callsRaw, leadRaw, followupLeadRaw, appRaw, appFollowupRaw] = await Promise.all([
-          fetchSheetData('Calls History', 'A:V'),
-          fetchSheetData('Lead Dump', 'A:BW'),
-          fetchSheetData('Followup Sheet - LEAD', 'A:BW'),
-          fetchSheetData('New - App start', 'A:EU'),
-          fetchSheetData('Followup sheet - App start', 'A:EU'),
+        const [callsRaw, leadRaw, appRaw] = await Promise.all([
+          fetchSheetData('Call history',  'A:V'),
+          fetchSheetData('Lead Dump',     'A:CG'),
+          fetchSheetData('App Start Dump','A:EU'),
         ])
-        if (callsRaw.length === 0) throw new Error("Calls History sheet returned no data — check the sheet name, sharing settings, and API key.")
+        if (callsRaw.length === 0) throw new Error("Call history sheet returned no data — check the sheet name, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
-        const pipeline = buildPipelineRows(leadRaw, followupLeadRaw, appRaw, appFollowupRaw)
+        // Pass same sheet data twice — buildPipelineRows deduplicates by phone/email
+        const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
         const activePipeline = pipeline.filter(row => !isPaymentCompleted(row.paymentStatus))
         const snapshotKey = "aias_admin_pipeline_snapshot_v1"
         let previous = null
