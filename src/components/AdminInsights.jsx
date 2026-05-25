@@ -591,7 +591,7 @@ function CallsBarChart({ allRows }) {
   )
 }
 
-function CallTypeDonut({ rows }) {
+function CallTypeDonut({ rows, onDrill }) {
   const [activeIdx, setActiveIdx] = useState(0)
   const types = ["Outgoing", "Incoming", "Missed", "Rejected"]
   const data = types.map(t => ({ name: t, value: rows.filter(r => r.callType === t).length })).filter(d => d.value > 0)
@@ -600,13 +600,15 @@ function CallTypeDonut({ rows }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-2">
         <div className="text-sm font-semibold text-gray-800">Call Type Breakdown</div>
-        <InfoBadge text="Donut shows the split of all calls by type — outgoing (dialled by counsellor), incoming (lead called back), missed, and rejected. Hover a segment to see the count." />
+        <InfoBadge text="Donut shows the split of all calls by type — outgoing (dialled by counsellor), incoming (lead called back), missed, and rejected. Click a segment or legend to see raw calls." />
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
                activeIndex={activeIdx} activeShape={renderActiveShape}
                onMouseEnter={(_, i) => setActiveIdx(i)}
+               onClick={onDrill ? (d) => onDrill(d.name, rows.filter(r => r.callType === d.name)) : undefined}
+               style={onDrill ? { cursor: "pointer" } : {}}
                dataKey="value" paddingAngle={3}>
             {data.map((d) => (
               <Cell key={d.name} fill={CALL_TYPE_COLORS[d.name] || "#94a3b8"} />
@@ -616,7 +618,9 @@ function CallTypeDonut({ rows }) {
       </ResponsiveContainer>
       <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-1">
         {data.map(d => (
-          <div key={d.name} className="flex items-center gap-1.5 text-xs text-gray-600">
+          <div key={d.name}
+               className={`flex items-center gap-1.5 text-xs text-gray-600 ${onDrill ? "cursor-pointer hover:text-gray-900" : ""}`}
+               onClick={() => onDrill?.(d.name, rows.filter(r => r.callType === d.name))}>
             <span className="w-2 h-2 rounded-full" style={{ background: CALL_TYPE_COLORS[d.name] || "#94a3b8" }} />
             {d.name} ({d.value})
           </div>
@@ -626,7 +630,7 @@ function CallTypeDonut({ rows }) {
   )
 }
 
-function StageBarChart({ rows }) {
+function StageBarChart({ rows, onDrill }) {
   const allStages = useMemo(() => {
     const set = new Set(rows.map(r => r.leadStage || "Unknown"))
     return [
@@ -648,17 +652,21 @@ function StageBarChart({ rows }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm font-semibold text-gray-800">Stage Breakdown</div>
-        <InfoBadge text="Counts all calls made today grouped by the lead's current CRM stage (e.g. Counseled, NCE, Not Interested). Helps see which stage is getting the most attention." />
+        <InfoBadge text="Counts all calls made today grouped by the lead's current CRM stage. Click a bar to see raw calls for that stage." />
       </div>
       <div className="space-y-3">
         {data.map(d => (
-          <div key={d.fullName}>
+          <div key={d.fullName}
+               className={onDrill ? "cursor-pointer group" : ""}
+               onClick={() => onDrill?.(d.fullName, rows.filter(r => (r.leadStage || "Unknown") === d.fullName))}>
             <div className="flex justify-between items-center mb-1">
-              <span className="text-xs text-gray-600 truncate max-w-[180px]" title={d.fullName}>{d.fullName}</span>
-              <span className="text-xs font-semibold text-gray-800 ml-2 flex-shrink-0">{d.value}</span>
+              <span className={`text-xs truncate max-w-[180px] ${onDrill ? "text-gray-700 group-hover:text-gray-900" : "text-gray-600"}`}
+                    title={d.fullName}>{d.fullName}</span>
+              <span className={`text-xs font-semibold ml-2 flex-shrink-0 ${onDrill ? "group-hover:underline" : ""}`}
+                    style={{ color: d.color }}>{d.value}</span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-700"
+              <div className={`h-full rounded-full transition-all duration-700 ${onDrill ? "group-hover:opacity-80" : ""}`}
                    style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
             </div>
           </div>
@@ -668,7 +676,7 @@ function StageBarChart({ rows }) {
   )
 }
 
-function SourceBarChart({ rows }) {
+function SourceBarChart({ rows, onDrill }) {
   const data = useMemo(() => {
     const map = {}
     rows.forEach(r => { if (r.source) map[r.source] = (map[r.source] || 0) + 1 })
@@ -683,7 +691,7 @@ function SourceBarChart({ rows }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm font-semibold text-gray-800">Calls by Source</div>
-        <InfoBadge text="Total calls made today to leads from each acquisition source (e.g. Facebook, Google, Organic). Useful to spot which source is driving the most activity." />
+        <InfoBadge text="Total calls made today to leads from each acquisition source. Click a bar to see raw calls for that source." />
       </div>
       <ResponsiveContainer width="100%" height={200}>
         <BarChart data={data} barCategoryGap="35%">
@@ -697,13 +705,15 @@ function SourceBarChart({ rows }) {
               return (
                 <div className="bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
                   <div className="font-semibold text-gray-700 mb-1">{payload[0]?.payload?.fullName || label}</div>
-                  <div className="text-gray-600">{payload[0]?.value} calls</div>
+                  <div className="text-gray-600">{payload[0]?.value} calls{onDrill ? " — click to drill" : ""}</div>
                 </div>
               )
             }}
             cursor={{ fill: "#f8fafc" }}
           />
-          <Bar dataKey="value" name="Calls" radius={[4,4,0,0]}>
+          <Bar dataKey="value" name="Calls" radius={[4,4,0,0]}
+               onClick={onDrill ? (d) => onDrill(d.fullName, rows.filter(r => r.source === d.fullName)) : undefined}
+               style={onDrill ? { cursor: "pointer" } : {}}>
             {data.map((_, i) => (
               <Cell key={i} fill={`hsl(${217 + i * 22}, 70%, ${55 + i * 3}%)`} />
             ))}
@@ -714,7 +724,7 @@ function SourceBarChart({ rows }) {
   )
 }
 
-function ConnectedBySection({ rows }) {
+function ConnectedBySection({ rows, onDrill }) {
   const sections = ["App Followup", "App Start New", "Followup Lead", "Fresh Lead"]
   const data = sections.map(sec => {
     const r = rows.filter(x => x.section === sec)
@@ -733,7 +743,7 @@ function ConnectedBySection({ rows }) {
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
         <div className="text-sm font-semibold text-gray-800">Connected by Section</div>
-        <InfoBadge text="Outgoing calls vs. connected calls (lead answered) split across the 4 dashboard tabs — App Followup, App New, Followup Leads, Fresh Leads. Shows where connection rates are strongest." />
+        <InfoBadge text="Outgoing vs. connected calls split across sections. Click a bar to see raw calls for that section." />
       </div>
       <ResponsiveContainer width="100%" height={180}>
         <BarChart data={data} barGap={3} barCategoryGap="30%">
@@ -742,8 +752,12 @@ function ConnectedBySection({ rows }) {
           <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-          <Bar dataKey="Outgoing"  fill="#93c5fd" radius={[3,3,0,0]} />
-          <Bar dataKey="Connected" fill="#22c55e" radius={[3,3,0,0]} />
+          <Bar dataKey="Outgoing"  fill="#93c5fd" radius={[3,3,0,0]}
+               onClick={onDrill ? (d) => onDrill(d.fullName + " — outgoing", rows.filter(r => r.section === d.fullName && r.callType === "Outgoing")) : undefined}
+               style={onDrill ? { cursor: "pointer" } : {}} />
+          <Bar dataKey="Connected" fill="#22c55e" radius={[3,3,0,0]}
+               onClick={onDrill ? (d) => onDrill(d.fullName + " — connected", rows.filter(r => r.section === d.fullName && r.durationMins > 0)) : undefined}
+               style={onDrill ? { cursor: "pointer" } : {}} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -754,7 +768,7 @@ function ConnectedBySection({ rows }) {
 // COUNSELED PIPELINE
 // ─────────────────────────────────────────────────────────────────────────────
 
-function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
+function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDrill }) {
   const [typeOpen, setTypeOpen] = useState({})
 
   const allCounseledRows = useMemo(
@@ -865,18 +879,23 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <KPICard
-          label="Active Counseled"
-          value={counseledRows.length}
-          sub={convertedCounseledCount ? `${convertedCounseledCount} converted excluded` : "current pipeline"}
-          icon="🎯"
-          color="#16a34a"
-        />
+        <div className={onDrill ? "cursor-pointer hover:shadow-md rounded-xl transition-shadow" : ""}
+             onClick={() => onDrill?.("All active counseled leads", counseledRows, "leads")}>
+          <KPICard
+            label="Active Counseled"
+            value={counseledRows.length}
+            sub={convertedCounseledCount ? `${convertedCounseledCount} converted excluded` : "click to view all"}
+            icon="🎯"
+            color="#16a34a"
+          />
+        </div>
         {PIPELINE_BUCKETS.map(b => (
-          <div key={b.key} className={`rounded-xl border p-5 ${b.bg} ${b.border}`}>
+          <div key={b.key}
+               className={`rounded-xl border p-5 ${b.bg} ${b.border} ${onDrill ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+               onClick={() => onDrill?.(`${b.label} counseled leads`, counseledRows.filter(r => r.bucket === b.key), "leads")}>
             <div className={`text-xs font-medium uppercase tracking-wide ${b.text}`}>{b.label}</div>
             <div className={`text-3xl font-bold mt-2 ${b.text}`}>{bucketCounts[b.key] || 0}</div>
-            <div className="text-xs text-gray-500 mt-1">counseled leads</div>
+            <div className="text-xs text-gray-500 mt-1">counseled leads{onDrill ? " — click to view" : ""}</div>
           </div>
         ))}
       </div>
@@ -906,7 +925,9 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
             <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
             {PIPELINE_BUCKETS.map(b => (
-              <Bar key={b.key} dataKey={b.key} name={b.label} stackId="pipeline" fill={b.color} radius={[3,3,0,0]} />
+              <Bar key={b.key} dataKey={b.key} name={b.label} stackId="pipeline" fill={b.color} radius={[3,3,0,0]}
+                   onClick={onDrill ? (d) => onDrill(`${d.fullName || d.name} — ${b.label} leads`, counseledRows.filter(r => r.counsellor === d.fullName && r.bucket === b.key), "leads") : undefined}
+                   style={onDrill ? { cursor: "pointer" } : {}} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -936,6 +957,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
               {typeRows.map(row => {
                 const isOpen = typeOpen[row.type]
                 const typeColor = row.type === "App Start" ? "#8b5cf6" : "#3b82f6"
+                const drillCls = onDrill ? "cursor-pointer hover:underline" : ""
                 return (
                   <>
                     <tr key={row.type}
@@ -945,10 +967,14 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
                         <span className="text-gray-400 text-xs mr-2">{isOpen ? "▼" : "▶"}</span>
                         {row.type}
                       </td>
-                      <td className="px-4 py-3 text-right font-semibold text-gray-900">{row.total}</td>
+                      <td className={`px-4 py-3 text-right font-semibold text-gray-900 ${drillCls}`}
+                          onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — all counsellors`, counseledRows.filter(r => r.type === row.type), "leads") } : undefined}>
+                        {row.total}
+                      </td>
                       {ALL_COLS.map(c => (
-                        <td key={c.key} className="px-4 py-3 text-right font-semibold"
-                            style={{ color: row.byCol[c.key]?.total ? c.color : "#d1d5db" }}>
+                        <td key={c.key} className={`px-4 py-3 text-right font-semibold ${drillCls}`}
+                            style={{ color: row.byCol[c.key]?.total ? c.color : "#d1d5db" }}
+                            onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.counsellor === c.key), "leads") } : undefined}>
                           {row.byCol[c.key]?.total ?? 0}
                         </td>
                       ))}
@@ -960,11 +986,13 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
                             {b.label}
                           </span>
                         </td>
-                        <td className="px-4 py-2.5 text-right text-xs text-gray-700 font-medium">
+                        <td className={`px-4 py-2.5 text-right text-xs text-gray-700 font-medium ${drillCls}`}
+                            onClick={onDrill ? () => onDrill(`${row.type} – ${b.label}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key), "leads") : undefined}>
                           {row[b.key]}
                         </td>
                         {ALL_COLS.map(c => (
-                          <td key={c.key} className="px-4 py-2.5 text-right text-xs text-gray-500">
+                          <td key={c.key} className={`px-4 py-2.5 text-right text-xs text-gray-500 ${drillCls}`}
+                              onClick={onDrill ? () => onDrill(`${row.type} – ${b.label} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key && r.counsellor === c.key), "leads") : undefined}>
                             {row.byCol[c.key]?.[b.key] ?? 0}
                           </td>
                         ))}
@@ -975,10 +1003,14 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date }) {
               })}
               <tr className="bg-gray-50 border-t border-gray-200">
                 <td className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</td>
-                <td className="px-4 py-3 text-right font-bold text-gray-900">{counseledRows.length}</td>
+                <td className={`px-4 py-3 text-right font-bold text-gray-900 ${onDrill ? "cursor-pointer hover:underline" : ""}`}
+                    onClick={onDrill ? () => onDrill("All counseled leads", counseledRows, "leads") : undefined}>
+                  {counseledRows.length}
+                </td>
                 {ALL_COLS.map(c => (
-                  <td key={c.key} className="px-4 py-3 text-right font-semibold"
-                      style={{ color: counsellorTotals[c.key] ? c.color : "#d1d5db" }}>
+                  <td key={c.key} className={`px-4 py-3 text-right font-semibold ${onDrill ? "cursor-pointer hover:underline" : ""}`}
+                      style={{ color: counsellorTotals[c.key] ? c.color : "#d1d5db" }}
+                      onClick={onDrill ? () => onDrill(`All counseled — ${c.short}`, counseledRows.filter(r => r.counsellor === c.key), "leads") : undefined}>
                     {counsellorTotals[c.key] ?? 0}
                   </td>
                 ))}
@@ -1195,7 +1227,7 @@ const OUT_SECTIONS = [
   { val: "Fresh Lead",    label: "Fresh Leads"         },
 ]
 
-function PivotTable({ rows }) {
+function PivotTable({ rows, onDrill }) {
   const [stageOpen, setStageOpen] = useState({})
   const [outOpen,   setOutOpen]   = useState(false)
 
@@ -1213,6 +1245,12 @@ function PivotTable({ rows }) {
       ...[...set].filter(s => !STAGE_ORDER.includes(s) && s !== "Unknown").sort(),
     ]
   }, [rows])
+
+  // Returns a function: colKey → filtered rows (null colKey = Total column)
+  const makeFilter = (rowFilter) => (colKey) => {
+    const base = colKey ? rows.filter(r => r.empName === colKey) : rows
+    return rowFilter ? base.filter(rowFilter) : base
+  }
 
   if (!allS) return (
     <div className="text-center py-12 text-gray-400 text-sm">No calls for the selected filters.</div>
@@ -1233,18 +1271,23 @@ function PivotTable({ rows }) {
     </tr>
   )
 
-  const DataRow = ({ label, getV, bold, indent = 0 }) => (
+  const drillCls = onDrill ? "cursor-pointer hover:underline" : ""
+
+  const DataRow = ({ label, getV, getRows, bold, indent = 0 }) => (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-2.5 text-sm border-b border-gray-100"
           style={{ paddingLeft: 16 + indent * 16, fontWeight: bold ? 600 : 400, color: indent ? "#6b7280" : "#1e293b" }}>
         {label}
       </td>
-      <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+      <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${getRows && onDrill ? drillCls : ""}`}
+          onClick={getRows && onDrill ? () => onDrill(`${label} — Total`, getRows(null), "calls") : undefined}>
         {allS ? getV(allS) ?? "—" : "—"}
       </td>
       {ALL_COLS.map(c => (
-        <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
-            style={{ color: byCol[c.key] ? c.color : "#d1d5db", fontWeight: bold ? 600 : 400 }}>
+        <td key={c.key}
+            className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${getRows && onDrill ? drillCls : ""}`}
+            style={{ color: byCol[c.key] ? c.color : "#d1d5db", fontWeight: bold ? 600 : 400 }}
+            onClick={getRows && onDrill ? () => onDrill(`${label} — ${c.short}`, getRows(c.key), "calls") : undefined}>
           {byCol[c.key] ? (getV(byCol[c.key]) ?? "—") : "0"}
         </td>
       ))}
@@ -1263,19 +1306,21 @@ function PivotTable({ rows }) {
         </thead>
         <tbody>
           <SectionRow label="Volume" color="#3b82f6" />
-          <DataRow label="Total calls"            getV={s=>s.total}    bold />
+          <DataRow label="Total calls"            getV={s=>s.total}    bold getRows={makeFilter(null)} />
           <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
               onClick={() => setOutOpen(o => !o)}>
             <td className="px-4 py-2.5 text-sm border-b border-gray-100 text-gray-800 select-none">
               <span className="text-gray-400 text-xs mr-2">{outOpen ? "▼" : "▶"}</span>
               Outgoing
             </td>
-            <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+            <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${drillCls}`}
+                onClick={onDrill ? (e) => { e.stopPropagation(); onDrill("Outgoing — Total", rows.filter(r => r.callType === "Outgoing"), "calls") } : undefined}>
               {allS?.outgoing ?? "—"}
             </td>
             {ALL_COLS.map(c => (
-              <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
-                  style={{ color: byCol[c.key] ? c.color : "#d1d5db" }}>
+              <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
+                  style={{ color: byCol[c.key] ? c.color : "#d1d5db" }}
+                  onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Outgoing — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.empName === c.key), "calls") } : undefined}>
                 {byCol[c.key]?.outgoing ?? 0}
               </td>
             ))}
@@ -1285,22 +1330,24 @@ function PivotTable({ rows }) {
               <td className="py-2 text-xs text-gray-500 border-b border-gray-100" style={{ paddingLeft: 40 }}>
                 {sec.label}
               </td>
-              <td className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600">
+              <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 ${drillCls}`}
+                  onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val), "calls") : undefined}>
                 {allS?.outBySec?.[sec.val] ?? 0}
               </td>
               {ALL_COLS.map(c => (
-                <td key={c.key} className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500">
+                <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500 ${drillCls}`}
+                    onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label} — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val && r.empName === c.key), "calls") : undefined}>
                   {byCol[c.key]?.outBySec?.[sec.val] ?? 0}
                 </td>
               ))}
             </tr>
           ))}
-          <DataRow label="Incoming"               getV={s=>s.incoming} />
-          <DataRow label="Missed / Rejected"      getV={s=>s.missed}   />
+          <DataRow label="Incoming"               getV={s=>s.incoming} getRows={makeFilter(r => r.callType === "Incoming")} />
+          <DataRow label="Missed / Rejected"      getV={s=>s.missed}   getRows={makeFilter(r => r.callType === "Missed" || r.callType === "Rejected")} />
           <DataRow label="Unique numbers dialled" getV={s=>s.unique}   />
 
           <SectionRow label="Connection quality" color="#22c55e" />
-          <DataRow label="Connected"   getV={s=>s.connected} bold />
+          <DataRow label="Connected"   getV={s=>s.connected} bold getRows={makeFilter(r => r.callType === "Outgoing" && r.durationMins > 0)} />
           <DataRow label="Connected %" getV={s=>s.connPct !== null ? s.connPct + "%" : "—"} />
 
           <SectionRow label="Stage breakdown" color="#f59e0b" />
@@ -1326,12 +1373,14 @@ function PivotTable({ rows }) {
                       )}
                     </span>
                   </td>
-                  <td className="px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800">
+                  <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${drillCls}`}
+                      onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage}`, rows.filter(r => (r.leadStage||"Unknown") === stage), "calls") } : undefined}>
                     {allS?.stages[stage] ?? 0}
                   </td>
                   {ALL_COLS.map(c => (
-                    <td key={c.key} className="px-4 py-2.5 text-sm text-right border-b border-gray-100"
-                        style={{ color: c.color }}>
+                    <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
+                        style={{ color: c.color }}
+                        onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage} — ${c.short}`, rows.filter(r => (r.leadStage||"Unknown") === stage && r.empName === c.key), "calls") } : undefined}>
                       {byCol[c.key]?.stages[stage] ?? 0}
                     </td>
                   ))}
@@ -1343,10 +1392,18 @@ function PivotTable({ rows }) {
                       <td className="py-2 text-xs text-gray-500 border-b border-gray-100" style={{ paddingLeft: 40 }}>
                         {sub}
                       </td>
-                      <td className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600">{tot}</td>
+                      <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 ${drillCls}`}
+                          onClick={onDrill ? () => onDrill(`${stage} / ${sub}`, rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
+                        {tot}
+                      </td>
                       {ALL_COLS.map(c => {
                         const v = rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub).length
-                        return <td key={c.key} className="px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500">{v||0}</td>
+                        return (
+                          <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500 ${drillCls}`}
+                              onClick={onDrill ? () => onDrill(`${stage} / ${sub} — ${c.short}`, rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
+                            {v||0}
+                          </td>
+                        )
                       })}
                     </tr>
                   )
@@ -1356,11 +1413,11 @@ function PivotTable({ rows }) {
           })}
 
           <SectionRow label="Duration (outgoing only)" color="#8b5cf6" />
-          <DataRow label="Total (mins)"                  getV={s=>s.totalDur} bold />
+          <DataRow label="Total (mins)"                  getV={s=>s.totalDur} bold getRows={makeFilter(r => r.callType === "Outgoing")} />
           <DataRow label="Avg per connected call (mins)"  getV={s=>s.avgDur}  />
         </tbody>
       </table>
-      <p className="text-xs text-gray-400 mt-3 px-4">Substage data from Lead Dump joined by phone number.</p>
+      <p className="text-xs text-gray-400 mt-3 px-4">Click any number to see raw calls. Substage data joined from Lead Dump by phone.</p>
     </div>
   )
 }
@@ -1609,6 +1666,92 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// DRILL DRAWER — raw data slide-in panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+function DrillDrawer({ drill, onClose }) {
+  if (!drill) return null
+
+  const CALLS_COLS = [
+    { key: "empName",      label: "Counsellor" },
+    { key: "toNumber",     label: "Phone"       },
+    { key: "callType",     label: "Type"        },
+    { key: "durationMins", label: "Dur (min)",  fmt: v => v ? r2(v) : "—" },
+    { key: "section",      label: "Section"     },
+    { key: "leadStage",    label: "Stage"       },
+    { key: "subStage",     label: "Sub-stage"   },
+    { key: "source",       label: "Source"      },
+    { key: "notes",        label: "Notes"       },
+  ]
+
+  const LEADS_COLS = [
+    { key: "name",       label: "Name"       },
+    { key: "phone",      label: "Phone"      },
+    { key: "counsellor", label: "Counsellor" },
+    { key: "stage",      label: "Stage"      },
+    { key: "subStage",   label: "Sub-stage"  },
+    { key: "bucket",     label: "Bucket"     },
+    { key: "source",     label: "Source"     },
+    { key: "type",       label: "Type"       },
+    { key: "notes",      label: "Notes"      },
+  ]
+
+  const cols = drill.type === "calls" ? CALLS_COLS : LEADS_COLS
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/40 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-3xl bg-white z-50 shadow-2xl flex flex-col">
+        <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between flex-shrink-0">
+          <div>
+            <div className="text-sm font-semibold text-gray-800">{drill.title}</div>
+            <div className="text-xs text-gray-400 mt-0.5">{drill.rows.length} record{drill.rows.length !== 1 ? "s" : ""}</div>
+          </div>
+          <button onClick={onClose}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition text-xl leading-none">
+            ×
+          </button>
+        </div>
+        <div className="overflow-auto flex-1">
+          {drill.rows.length === 0 ? (
+            <div className="text-center py-16 text-sm text-gray-400">No records for this selection.</div>
+          ) : (
+            <table className="w-full text-xs min-w-[700px]">
+              <thead className="sticky top-0 bg-gray-50 border-b border-gray-200">
+                <tr>
+                  {cols.map(c => (
+                    <th key={c.key} className="px-3 py-2.5 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">
+                      {c.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {drill.rows.map((row, i) => (
+                  <tr key={i} className="hover:bg-gray-50">
+                    {cols.map(c => {
+                      const raw = row[c.key]
+                      const val = c.fmt ? c.fmt(raw) : (raw || "—")
+                      return (
+                        <td key={c.key}
+                            className={`px-3 py-2 text-gray-700 truncate ${c.key === "notes" ? "max-w-[260px]" : "max-w-[150px]"}`}
+                            title={String(raw ?? "")}>
+                          {val}
+                        </td>
+                      )
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // OVERVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1725,6 +1868,9 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
   const [section, setSection] = useState("all")
   const [source,  setSource]  = useState("all")
   const [subTab,  setSubTab]  = useState(initialSubTab)
+  const [drill,   setDrill]   = useState(null)
+
+  const openDrill = useCallback((title, rows, type) => setDrill({ title, rows, type }), [])
 
   const filtered = useMemo(() => {
     const secVal = SECTIONS.find(s => s.key === section)?.val
@@ -1832,12 +1978,12 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         {subTab === "charts" && (
           <>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <StageBarChart rows={visibleRows} />
-              <SourceBarChart rows={visibleRows} />
+              <StageBarChart rows={visibleRows} onDrill={(label, rows) => openDrill(`Stage: ${label}`, rows, "calls")} />
+              <SourceBarChart rows={visibleRows} onDrill={(label, rows) => openDrill(`Source: ${label}`, rows, "calls")} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <CallTypeDonut rows={visibleRows} />
-              <ConnectedBySection rows={visibleRows} />
+              <CallTypeDonut rows={visibleRows} onDrill={(label, rows) => openDrill(`Call type: ${label}`, rows, "calls")} />
+              <ConnectedBySection rows={visibleRows} onDrill={(label, rows) => openDrill(label, rows, "calls")} />
             </div>
           </>
         )}
@@ -1845,18 +1991,20 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
             <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
               <div className="text-sm font-semibold text-gray-800">Pivot Table</div>
-              <InfoBadge text="Rows = metrics (volume, connection quality, stage breakdown, duration). Columns = Total + each counsellor. Click 'Outgoing' to expand by section. Click a stage row to expand substages." />
+              <InfoBadge text="Rows = metrics (volume, connection quality, stage breakdown, duration). Columns = Total + each counsellor. Click any number to see raw calls." />
             </div>
-            <PivotTable rows={visibleRows} />
+            <PivotTable rows={visibleRows} onDrill={openDrill} />
           </div>
         )}
         {subTab === "pipeline" && (
-          <PipelineSection pipelineRows={visiblePipelineRows} pipelineChanges={pipelineChanges} callRows={visibleRows} date={date} />
+          <PipelineSection pipelineRows={visiblePipelineRows} pipelineChanges={pipelineChanges} callRows={visibleRows} date={date} onDrill={openDrill} />
         )}
         {subTab === "ai" && (
           <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
         )}
       </div>
+
+      <DrillDrawer drill={drill} onClose={() => setDrill(null)} />
     </div>
   )
 }
