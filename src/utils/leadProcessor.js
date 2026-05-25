@@ -181,13 +181,13 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 
   const allMatching = dataRows.filter(row => {
     const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const paymentStatus = (getCol(row, 'AJ') || '').trim()
+    const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').trim()
     const counsellor    = (getCol(row, 'BC') || '').trim()
     const regOn         = getCol(row, 'BA')
     return (
       userType === 'lead' &&
-      paymentStatus !== 'Completed' &&
+      paymentStatus !== 'completed' &&
       leadStage === 'Untouched' &&
       counsellor === counsellorName &&
       isYesterdayOrOlder(regOn)
@@ -250,13 +250,13 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
   dataRows.forEach(row => {
     const counsellor    = (getCol(row, 'BC') || '').trim()
     const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const paymentStatus = (getCol(row, 'AJ') || '').trim()
+    const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').trim()
     const subStage      = (getCol(row, 'BE') || '').trim()
     const lastAct       = getCol(row, 'BK')
 
     if (counsellor !== counsellorName || userType !== 'lead') return
-    if (paymentStatus === 'Completed') return
+    if (paymentStatus === 'completed') return
 
     if (spokeToday(lastAct)) {
       if (leadStage === 'Counseled' || leadStage === 'No Contact Established') {
@@ -318,7 +318,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     const counsellor    = (getCol(row, 'AR') || '').trim()
     const appStage      = (getCol(row, 'AU') || '').trim()
     const leadStage     = (getCol(row, 'AT') || '').trim()
-    const paymentStatus = (getCol(row, 'C')  || '').trim()
+    const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
     const appNumber     = parseFloat(getCol(row, 'B')) || 0
     const regOn         = getCol(row, 'Q')
@@ -326,7 +326,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     if (counsellor !== counsellorName)           return false
     if (appStage !== 'Untouched')                return false
     if (leadStage === 'Paid' || leadStage === 'Counseled') return false
-    if (paymentStatus === 'Completed')           return false
+    if (paymentStatus === 'completed')           return false
     // pmax excluded unless Application Number > 0
     if (source === 'pmax' && appNumber <= 0)     return false
 
@@ -396,12 +396,12 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
     const appStage      = (getCol(row, 'AU') || '').trim()
     const appSubStage   = (getCol(row, 'AV') || '').trim()
     const leadStage     = (getCol(row, 'AT') || '').trim()
-    const paymentStatus = (getCol(row, 'C')  || '').trim()
+    const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
     const lastAct       = getCol(row, 'BG')
 
     if (counsellor !== counsellorName)  return
-    if (paymentStatus === 'Completed')  return
+    if (paymentStatus === 'completed')  return
     if (source === 'pmax')              return
 
     if (spokeToday(lastAct)) {
