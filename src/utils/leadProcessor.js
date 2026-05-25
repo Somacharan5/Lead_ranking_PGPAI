@@ -169,6 +169,7 @@ function spokeToday(lastActivityStr) {
 //
 // FILTER:
 //   AG (User Type)              = "lead"
+//   AJ (Payment Status)         ≠ "Completed"
 //   BD (Lead Stage)             = "Untouched"
 //   BC (Counsellor)             = [logged-in counsellor]
 //   BA (Registered On)          ≤ yesterday
@@ -179,12 +180,14 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
   const dataRows = leadDumpRows.slice(1)
 
   const allMatching = dataRows.filter(row => {
-    const userType   = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const leadStage  = (getCol(row, 'BD') || '').trim()
-    const counsellor = (getCol(row, 'BC') || '').trim()
-    const regOn      = getCol(row, 'BA')
+    const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
+    const paymentStatus = (getCol(row, 'AJ') || '').trim()
+    const leadStage     = (getCol(row, 'BD') || '').trim()
+    const counsellor    = (getCol(row, 'BC') || '').trim()
+    const regOn         = getCol(row, 'BA')
     return (
       userType === 'lead' &&
+      paymentStatus !== 'Completed' &&
       leadStage === 'Untouched' &&
       counsellor === counsellorName &&
       isYesterdayOrOlder(regOn)
@@ -245,13 +248,15 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
   const actionable = []
 
   dataRows.forEach(row => {
-    const counsellor = (getCol(row, 'BC') || '').trim()
-    const userType   = (getCol(row, 'AG') || '').toLowerCase().trim()
-    const leadStage  = (getCol(row, 'BD') || '').trim()
-    const subStage   = (getCol(row, 'BE') || '').trim()
-    const lastAct    = getCol(row, 'BK')
+    const counsellor    = (getCol(row, 'BC') || '').trim()
+    const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
+    const paymentStatus = (getCol(row, 'AJ') || '').trim()
+    const leadStage     = (getCol(row, 'BD') || '').trim()
+    const subStage      = (getCol(row, 'BE') || '').trim()
+    const lastAct       = getCol(row, 'BK')
 
     if (counsellor !== counsellorName || userType !== 'lead') return
+    if (paymentStatus === 'Completed') return
 
     if (spokeToday(lastAct)) {
       if (leadStage === 'Counseled' || leadStage === 'No Contact Established') {
