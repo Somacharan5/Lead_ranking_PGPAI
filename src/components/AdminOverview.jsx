@@ -761,12 +761,19 @@ function BlackoutDetailPage({ blackout, onBack }) {
 
 // ─── Cache validity ───────────────────────────────────────────────────────────
 
+const REFRESH_HOURS = [8, 12, 16, 19] // 8 AM, 12 PM, 4 PM, 7 PM
+
+function lastScheduledRefresh() {
+  const now = new Date()
+  const passed = REFRESH_HOURS
+    .map(h => { const d = new Date(now); d.setHours(h, 0, 0, 0); return d })
+    .filter(t => t <= now)
+  if (passed.length > 0) return passed[passed.length - 1]
+  const prev = new Date(now); prev.setDate(prev.getDate() - 1); prev.setHours(19, 0, 0, 0)
+  return prev
+}
+
 function isCacheValid(cacheTime) {
   if (!cacheTime) return false
-  const cached = new Date(cacheTime)
-  const now    = new Date()
-  const today1030 = new Date(); today1030.setHours(10, 30, 0, 0)
-  if (cached.toDateString() === now.toDateString() && cached >= today1030) return true
-  if (now < today1030 && cached.toDateString() === new Date(now - 86400000).toDateString()) return true
-  return false
+  return new Date(cacheTime) >= lastScheduledRefresh()
 }

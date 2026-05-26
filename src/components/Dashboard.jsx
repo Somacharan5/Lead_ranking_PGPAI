@@ -6,17 +6,22 @@ import LeadTable from './LeadTable'
 
 const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
 const POLL_INTERVAL_MS = 60 * 1000 // Check refresh signal every 60 seconds
+const REFRESH_HOURS = [8, 12, 16, 19] // 8 AM, 12 PM, 4 PM, 7 PM
+
+function lastScheduledRefresh() {
+  const now = new Date()
+  const passed = REFRESH_HOURS
+    .map(h => { const d = new Date(now); d.setHours(h, 0, 0, 0); return d })
+    .filter(t => t <= now)
+  if (passed.length > 0) return passed[passed.length - 1]
+  // Before 8 AM — last valid window was yesterday 7 PM
+  const prev = new Date(now); prev.setDate(prev.getDate() - 1); prev.setHours(19, 0, 0, 0)
+  return prev
+}
 
 function isCacheValid(cacheTime) {
   if (!cacheTime) return false
-  const cached = new Date(cacheTime)
-  const now = new Date()
-  const today1030 = new Date()
-  today1030.setHours(10, 30, 0, 0)
-  
-  if (cached.toDateString() === now.toDateString() && cached >= today1030) return true
-  if (now < today1030 && cached.toDateString() === new Date(now - 86400000).toDateString()) return true
-  return false
+  return new Date(cacheTime) >= lastScheduledRefresh()
 }
 
 export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }) {
@@ -34,26 +39,46 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
   const [copyMessage, setCopyMessage] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [refreshMessage, setRefreshMessage] = useState('')
-  const lastSignalRef = useRef(null)
+  const lastSignalRef       = useRef(null)
+  const silentRefreshingRef = useRef(false)
 
   useEffect(() => {
     loadLeads()
   }, [selectedCounsellor])
 
-  // Poll for global refresh signal every 60 seconds
+  // Poll every 60s: handle admin force-refresh signal + scheduled silent auto-refresh
   useEffect(() => {
     const checkSignal = async () => {
       const signal = await getRefreshSignal()
       if (signal && lastSignalRef.current && signal > lastSignalRef.current) {
-        // Admin triggered a refresh - reload data
         lastSignalRef.current = signal
         loadLeads(true)
+        return // loadLeads handles the refresh; skip silent check this tick
       } else if (signal && !lastSignalRef.current) {
         lastSignalRef.current = signal
       }
+
+      // Silent auto-refresh: if cache is stale relative to scheduled windows, fetch quietly
+      const cacheKey     = `aias_leads_${selectedCounsellor}`
+      const cacheTimeKey = `aias_cache_time_${selectedCounsellor}`
+      if (!isCacheValid(localStorage.getItem(cacheTimeKey)) && !silentRefreshingRef.current) {
+        silentRefreshingRef.current = true
+        try {
+          const result = await getLeadsForCounsellor(selectedCounsellor)
+          const now = new Date()
+          localStorage.setItem(cacheKey, JSON.stringify(result))
+          localStorage.setItem(cacheTimeKey, now.toISOString())
+          setData(result)
+          setLastRefresh(now)
+        } catch {
+          // Silent fail — counsellor keeps working with existing data
+        } finally {
+          silentRefreshingRef.current = false
+        }
+      }
     }
-    
-    checkSignal() // Check immediately
+
+    checkSignal()
     const interval = setInterval(checkSignal, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [selectedCounsellor])
