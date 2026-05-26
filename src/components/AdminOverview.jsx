@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getLeadsForCounsellor, parseBlackouts } from '../utils/leadProcessor'
 import { triggerGlobalRefresh } from '../utils/refreshSignal'
 import AdminInsights from './AdminInsights'
@@ -71,7 +71,8 @@ function bustCounsellorCaches() {
 
 export default function AdminOverview() {
   const navigate = useNavigate()
-  const [view,             setView]             = useState('overview')
+  const [params, setParams] = useSearchParams()
+  const view = params.get('tab') || 'overview'
   const [selectedBlackout, setSelectedBlackout] = useState(null)
   const [rows,             setRows]             = useState(
     COUNSELLORS.map(name => ({ name, data: null, loading: true, error: false }))
@@ -150,7 +151,13 @@ export default function AdminOverview() {
   }
 
   const switchView = (v) => {
-    setView(prev => prev === v ? 'overview' : v)
+    const next = view === v ? 'overview' : v
+    setParams(p => {
+      const n = new URLSearchParams(p)
+      if (next === 'overview') n.delete('tab')
+      else n.set('tab', next)
+      return n
+    }, { replace: true })
     setSelectedBlackout(null)
   }
 

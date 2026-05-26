@@ -1,17 +1,5 @@
 import { useState } from 'react'
 
-function parseSerial(val) {
-  const n = Number(val)
-  if (!isNaN(n) && n > 40000 && n < 60000) return new Date((Math.floor(n) - 25569) * 86400 * 1000)
-  return new Date(val)
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const d = parseSerial(dateStr)
-  if (isNaN(d)) return String(dateStr)
-  return d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-}
 
 const COLUMNS = [
   { key: 'index',                   label: '#',              sortable: false },
@@ -22,9 +10,7 @@ const COLUMNS = [
   { key: 'email',                   label: 'Email',          sortable: false },
   { key: 'mobile',                  label: 'Mobile',         sortable: false },
   { key: 'source',                  label: 'Source',         sortable: true  },
-  { key: 'registeredOn',            label: 'Registered On',  sortable: true  },
   { key: 'medium',                  label: 'Medium',         sortable: false },
-  { key: 'counsellorLastActivity',  label: 'Last Activity',  sortable: true  },
   { key: 'campaign',                label: 'Campaign',       sortable: false },
   { key: 'stage',                   label: 'Stage',          sortable: true  },
   { key: 'subStage',                label: 'Sub Stage',      sortable: false },
@@ -35,10 +21,6 @@ const COLUMNS = [
 function sortValue(lead, key) {
   if (key === 'priority') {
     return parseInt((lead.priority || '').replace(/\D/g, '')) || 99
-  }
-  if (key === 'registeredOn' || key === 'counsellorLastActivity') {
-    const d = parseSerial(lead[key])
-    return isNaN(d) ? 0 : d.getTime()
   }
   return lead[key] ?? ''
 }
@@ -143,9 +125,7 @@ export default function LeadTable({ leads, defaultSortKey = 'score', defaultSort
                     : ''}
                 </td>
                 <td className="px-3 py-2 text-gray-600">{lead.source}</td>
-                <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">{formatDate(lead.registeredOn)}</td>
                 <td className="px-3 py-2 text-gray-600">{lead.medium}</td>
-                <td className="px-3 py-2 text-gray-500 whitespace-nowrap text-xs">{formatDate(lead.counsellorLastActivity)}</td>
                 <td className="px-3 py-2 text-gray-600 max-w-[200px] truncate" title={lead.campaign}>{lead.campaign}</td>
                 <td className="px-3 py-2 text-gray-600">{lead.stage}</td>
                 <td className="px-3 py-2 text-gray-600">{lead.subStage}</td>
@@ -190,15 +170,9 @@ function MobileCard({ lead, idx }) {
         )}
       </div>
 
-      {/* Stage + Last Activity */}
+      {/* Stage */}
       <div className="flex flex-wrap gap-3 mt-2 text-xs text-gray-500">
         {lead.stage && <span>Stage: <span className="text-gray-700 font-medium">{lead.stage}</span></span>}
-        {lead.counsellorLastActivity && (
-          <span>Last activity: <span className="text-gray-700 font-medium">{formatDate(lead.counsellorLastActivity)}</span></span>
-        )}
-        {lead.registeredOn && (
-          <span>Registered: <span className="text-gray-700 font-medium">{formatDate(lead.registeredOn)}</span></span>
-        )}
       </div>
 
       {/* Expand toggle */}

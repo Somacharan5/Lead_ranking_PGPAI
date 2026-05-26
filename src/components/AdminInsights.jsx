@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import { useSearchParams } from "react-router-dom"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, Sector,
@@ -146,11 +147,16 @@ function isPaymentCompleted(raw) {
 }
 
 function inferPipelineBucket(row) {
-  const text = `${row.subStage || ""} ${row.notes || ""} ${row.priority || ""}`.toLowerCase()
-  if (/(hot|high intent|very interested|will pay|payment|shortlist|visit|application|interview|callback today|priority 1)/.test(text)) return "hot"
-  if (/(warm|interested|follow.?up|callback|thinking|discuss|parents|fees|scholarship|priority 2|priority 3)/.test(text)) return "warm"
-  if (/(cold|not interested|not eligible|wrong number|invalid|dropped|low intent|priority 5)/.test(text)) return "cold"
+  const sub = (row.subStage || "").toLowerCase().trim()
+  if (sub === "hot") return "hot"
+  if (sub === "cold") return "cold"
   return "warm"
+}
+
+function fmtSerial(val) {
+  const d = parseDate(val)
+  if (!d) return ""
+  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 }
 
 function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRows = [], appFollowupRows = []) {
@@ -178,30 +184,38 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
       notes: cellText(row[cfg.notesIdx]),
       priority: cfg.priorityIdx !== null ? cellText(row[cfg.priorityIdx]) : "",
       paymentStatus: cfg.paymentStatusIdx !== null ? cellText(row[cfg.paymentStatusIdx]) : "",
+      registeredOn: fmtSerial(row[cfg.registeredOnIdx]),
+      lastActivity: fmtSerial(row[cfg.lastActivityIdx]),
     }
     item.bucket = inferPipelineBucket(item)
     rows.push(item)
   }
 
   // Lead Dump — all leads (fresh + followup) in one sheet
-  // New column positions: BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, AJ(35)=PaymentStatus, CG(84)=Priority
+  // BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, AJ(35)=PaymentStatus, CG(84)=Priority
+  // BA(52)=Registered On, BK(62)=Last Activity
   leadDumpRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
     counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
+    registeredOnIdx: 52, lastActivityIdx: 62,
   }))
   // followupLeadRows is the same sheet — deduplication by phone/email prevents double-counting
   followupLeadRows.slice(1).forEach(row => add(row, {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
     counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
+    registeredOnIdx: 52, lastActivityIdx: 62,
   }))
-  // App Start Dump — all app starts (new + followup) in one sheet — columns unchanged
+  // App Start Dump — all app starts (new + followup) in one sheet
+  // Q(16)=Registered On, BG(58)=Last Activity
   appStartRows.slice(1).forEach(row => add(row, {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
     counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null, paymentStatusIdx: 2,
+    registeredOnIdx: 16, lastActivityIdx: 58,
   }))
   appFollowupRows.slice(1).forEach(row => add(row, {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
     counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: 150, paymentStatusIdx: 2,
+    registeredOnIdx: 16, lastActivityIdx: 58,
   }))
 
   return rows
@@ -1685,15 +1699,17 @@ function DrillDrawer({ drill, onClose }) {
   ]
 
   const LEADS_COLS = [
-    { key: "name",       label: "Name"       },
-    { key: "phone",      label: "Phone"      },
-    { key: "counsellor", label: "Counsellor" },
-    { key: "stage",      label: "Stage"      },
-    { key: "subStage",   label: "Sub-stage"  },
-    { key: "bucket",     label: "Bucket"     },
-    { key: "source",     label: "Source"     },
-    { key: "type",       label: "Type"       },
-    { key: "notes",      label: "Notes"      },
+    { key: "name",         label: "Name"          },
+    { key: "phone",        label: "Phone"         },
+    { key: "counsellor",   label: "Counsellor"    },
+    { key: "stage",        label: "Stage"         },
+    { key: "subStage",     label: "Sub-stage"     },
+    { key: "bucket",       label: "Bucket"        },
+    { key: "source",       label: "Source"        },
+    { key: "type",         label: "Type"          },
+    { key: "registeredOn", label: "Registered On" },
+    { key: "lastActivity", label: "Last Activity" },
+    { key: "notes",        label: "Notes"         },
   ]
 
   const cols = drill.type === "calls" ? CALLS_COLS : LEADS_COLS
@@ -2014,11 +2030,22 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 // ─────────────────────────────────────────────────────────────────────────────
 
 export default function AdminInsights() {
-  const [view,    setView]    = useState("overview")
-  const [date,    setDate]    = useState(() => {
-    const d = new Date(); d.setDate(d.getDate() - 1)
-    return d.toISOString().slice(0, 10)
-  })
+  const [params, setParams] = useSearchParams()
+  const DEFAULT_DATE = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
+  const view         = params.get('ai_view')   || 'overview'
+  const date         = params.get('ai_date')   || DEFAULT_DATE
+  const detailSubTab = params.get('ai_subtab') || 'charts'
+
+  const setView = useCallback((v) => setParams(p => {
+    const n = new URLSearchParams(p)
+    if (v === 'overview') n.delete('ai_view'); else n.set('ai_view', v)
+    return n
+  }, { replace: true }), [setParams])
+
+  const setDate = useCallback((v) => setParams(p => {
+    const n = new URLSearchParams(p); n.set('ai_date', v); return n
+  }, { replace: true }), [setParams])
+
   const [allRows, setAllRows] = useState([])
   const [pipelineRows, setPipelineRows] = useState([])
   const [pipelineChanges, setPipelineChanges] = useState({
@@ -2029,7 +2056,6 @@ export default function AdminInsights() {
     subStageChanges: [],
     netCounseled: 0,
   })
-  const [detailSubTab, setDetailSubTab] = useState("charts")
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState("")
 
@@ -2098,8 +2124,8 @@ export default function AdminInsights() {
         allRows={allRows}
         pipelineRows={pipelineRows}
         pipelineChanges={pipelineChanges}
-        onDrill={() => { setDetailSubTab("charts"); setView("detail") }}
-        onOpenPipeline={() => { setDetailSubTab("pipeline"); setView("detail") }}
+        onDrill={() => setParams(p => { const n = new URLSearchParams(p); n.delete('ai_subtab'); n.set('ai_view', 'detail'); return n }, { replace: true })}
+        onOpenPipeline={() => setParams(p => { const n = new URLSearchParams(p); n.set('ai_subtab', 'pipeline'); n.set('ai_view', 'detail'); return n }, { replace: true })}
       />
     : <Detail   date={date} setDate={setDate} allRows={allRows} pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} initialSubTab={detailSubTab} onBack={() => setView("overview")} />
 }
