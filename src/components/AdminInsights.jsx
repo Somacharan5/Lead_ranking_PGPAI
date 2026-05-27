@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback, useRef } from "react"
+import React, { useState, useEffect, useMemo, useCallback, useRef } from "react"
 import { useSearchParams } from "react-router-dom"
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -1376,54 +1376,60 @@ function PivotTable({ rows, onDrill }) {
             const hasSubStages = subKeys.length > 0
             const stageColor   = STAGE_COLORS[stage] || "#94a3b8"
             return (
-              <tbody key={stage}>
+              <React.Fragment key={stage}>
                 <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
                     onClick={() => hasSubStages && setStageOpen(p => ({...p,[stage]:!p[stage]}))}>
                   <td className="px-4 py-2.5 text-sm border-b border-gray-100 font-medium" style={{ color: "#1e293b" }}>
                     <span className="inline-flex items-center gap-2">
+                      {hasSubStages
+                        ? <span className="text-gray-400 text-xs w-3 text-center">{isOpen ? "▼" : "▶"}</span>
+                        : <span className="w-3" />
+                      }
                       <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: stageColor }} />
                       {stage}
-                      {hasSubStages && (
-                        <span className="text-gray-400 text-xs">{isOpen ? "▲" : "▼"}</span>
-                      )}
                     </span>
                   </td>
                   <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${drillCls}`}
                       onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage}`, rows.filter(r => (r.leadStage||"Unknown") === stage), "calls") } : undefined}>
                     {allS?.stages[stage] ?? 0}
                   </td>
-                  {ALL_COLS.map(c => (
-                    <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
-                        style={{ color: c.color }}
-                        onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage} — ${c.short}`, rows.filter(r => (r.leadStage||"Unknown") === stage && r.empName === c.key), "calls") } : undefined}>
-                      {byCol[c.key]?.stages[stage] ?? 0}
-                    </td>
-                  ))}
+                  {ALL_COLS.map(c => {
+                    const v = byCol[c.key]?.stages[stage] ?? 0
+                    return (
+                      <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
+                          style={{ color: v > 0 ? c.color : "#d1d5db" }}
+                          onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage} — ${c.short}`, rows.filter(r => (r.leadStage||"Unknown") === stage && r.empName === c.key), "calls") } : undefined}>
+                        {v}
+                      </td>
+                    )
+                  })}
                 </tr>
                 {isOpen && subKeys.map(sub => {
                   const tot = rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub).length
                   return (
-                    <tr key={sub} className="bg-gray-50">
-                      <td className="py-2 text-xs text-gray-500 border-b border-gray-100" style={{ paddingLeft: 40 }}>
+                    <tr key={sub} className="bg-amber-50/40">
+                      <td className="py-2 text-xs text-gray-500 border-b border-gray-100"
+                          style={{ paddingLeft: 44, borderLeft: `3px solid ${stageColor}40` }}>
                         {sub}
                       </td>
-                      <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 ${drillCls}`}
+                      <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 font-medium ${drillCls}`}
                           onClick={onDrill ? () => onDrill(`${stage} / ${sub}`, rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
                         {tot}
                       </td>
                       {ALL_COLS.map(c => {
                         const v = rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub).length
                         return (
-                          <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500 ${drillCls}`}
+                          <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 ${drillCls}`}
+                              style={{ color: v > 0 ? c.color : "#d1d5db" }}
                               onClick={onDrill ? () => onDrill(`${stage} / ${sub} — ${c.short}`, rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
-                            {v||0}
+                            {v}
                           </td>
                         )
                       })}
                     </tr>
                   )
                 })}
-              </tbody>
+              </React.Fragment>
             )
           })}
 
