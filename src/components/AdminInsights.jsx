@@ -91,7 +91,8 @@ const SENTIMENT = {
 function normalizeName(raw) {
   const t = cellText(raw)
   if (!t) return null
-  return NAME_MAP[t] || "Others"
+  const titled = t.replace(/\b\w/g, c => c.toUpperCase())
+  return NAME_MAP[titled] || NAME_MAP[t] || "Others"
 }
 
 function inferSection(stageType, leadStage) {
