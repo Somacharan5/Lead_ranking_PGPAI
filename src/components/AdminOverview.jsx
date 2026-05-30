@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom'
 import { getLeadsForCounsellor, parseBlackouts } from '../utils/leadProcessor'
 import { triggerGlobalRefresh } from '../utils/refreshSignal'
 import AdminInsights from './AdminInsights'
+import TranscriptionAnalysis from './TranscriptionAnalysis'
 
 const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
 
@@ -195,6 +196,10 @@ export default function AdminOverview() {
               className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${view === 'insights' ? 'bg-violet-600 text-white' : 'bg-violet-50 hover:bg-violet-100 text-violet-700'}`}>
               📊 <span className="hidden sm:inline">Insights</span>
             </button>
+            <button onClick={() => switchView('transcription')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${view === 'transcription' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700'}`}>
+              🎙️ <span className="hidden sm:inline">Transcription</span>
+            </button>
             <button onClick={() => navigate('/admin')}
               className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
               📋 <span className="hidden sm:inline">Detailed View</span>
@@ -211,6 +216,13 @@ export default function AdminOverview() {
       {view === 'insights' && (
         <div className="max-w-[1400px] mx-auto">
           <AdminInsights />
+        </div>
+      )}
+
+      {/* ── View: Transcription Analysis ── */}
+      {view === 'transcription' && (
+        <div className="max-w-[1400px] mx-auto">
+          <TranscriptionAnalysis />
         </div>
       )}
 
