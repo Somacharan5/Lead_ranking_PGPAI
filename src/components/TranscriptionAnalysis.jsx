@@ -226,13 +226,15 @@ function OverviewTab({ summary, personas, matches }) {
           </div>
         </Card>
         <Card style={{ borderLeft: "4px solid #10B981" }}>
-          <SectionLabel>Analysis snapshot</SectionLabel>
+          <SectionLabel>Live matches snapshot</SectionLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
             {[
-              ["Live leads matched",  summary.live_leads_matched || "—"],
-              ["Action today",        summary.urgency_today       || "—"],
-              ["Action this week",    summary.urgency_this_week   || "—"],
-              ["Last refreshed",      summary.generated_at        || "Unknown"],
+              ["Score range",         summary.score_range || "80–100"],
+              ["Leads matched",       summary.live_leads_matched || "—"],
+              ["With call notes",     summary.leads_with_notes != null ? `${summary.leads_with_notes} / ${summary.live_leads_matched}` : "—"],
+              ["Action today",        summary.urgency_today || "—"],
+              ["Action this week",    summary.urgency_this_week || "—"],
+              ["Last refreshed",      summary.generated_at || "Unknown"],
             ].map(([l, v]) => (
               <div key={l} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: "#64748B" }}>{l}</span>
@@ -462,13 +464,34 @@ function MatchRow({ match, personas }) {
 
         {/* Name + meta */}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
-            {match.name || "Unknown"}
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>
+              {match.name || "Unknown"}
+            </span>
+            {match.lead_score && (
+              <span style={{
+                fontSize: 10, fontWeight: 700, color: "#4F46E5",
+                background: "#EEF2FF", border: "1px solid #C7D2FE",
+                borderRadius: 6, padding: "1px 6px",
+              }}>
+                Score {match.lead_score}
+              </span>
+            )}
+            {(match.notes_count > 0) && (
+              <span style={{
+                fontSize: 10, fontWeight: 600, color: "#059669",
+                background: "#ECFDF5", border: "1px solid #A7F3D0",
+                borderRadius: 6, padding: "1px 6px",
+              }}>
+                {match.notes_count} note{match.notes_count === 1 ? "" : "s"}
+              </span>
+            )}
           </div>
-          <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 1 }}>
-            ···{(match.mobile || "").slice(-4)} &nbsp;·&nbsp; {match.app_stage}
-            {match.app_sub_stage ? ` / ${match.app_sub_stage}` : ""}
-            &nbsp;·&nbsp; {match.calls_on_record || 0} call{match.calls_on_record === 1 ? "" : "s"} on record
+          <div style={{ fontSize: 11, color: "#94A3B8", marginTop: 2 }}>
+            ···{(match.mobile || "").slice(-4)} &nbsp;·&nbsp;
+            {match.counsellor} &nbsp;·&nbsp;
+            {match.lead_stage}{match.sub_stage ? ` / ${match.sub_stage}` : ""} &nbsp;·&nbsp;
+            {match.source}
           </div>
         </div>
 
@@ -632,8 +655,10 @@ export default function TranscriptionAnalysis() {
           !(m.mobile || "").includes(searchText)) return false
       return true
     }).sort((a, b) => {
-      const o = { today: 0, "this-week": 1, low: 2 }
-      return (o[a.urgency] ?? 3) - (o[b.urgency] ?? 3)
+      const urgOrd = { today: 0, "this-week": 1, low: 2 }
+      const uDiff  = (urgOrd[a.urgency] ?? 3) - (urgOrd[b.urgency] ?? 3)
+      if (uDiff !== 0) return uDiff
+      return (b.lead_score || 0) - (a.lead_score || 0)
     })
   }, [matches, urgencyFilter, personaFilter, counsellorFilter, searchText])
 
