@@ -1916,29 +1916,30 @@ const PA_ATTR_CONFIGS = [
   { field: "role",       title: "Role",             icon: "👤", accent: "#4F46E5" },
 ]
 
-function PaidAttrBar({ items, total, accent }) {
-  const max = Math.max(...items.map(d => d.count), 1)
+function PaidAttrList({ items, total, accent }) {
   return (
-    <div className="flex flex-col gap-2.5">
-      {items.map(({ label, count }) => {
-        const pct    = total ? Math.round(count / total * 100) : 0
-        const barPct = Math.round(count / max * 100)
+    <div className="flex flex-col divide-y divide-gray-50">
+      {items.map(({ label, count }, i) => {
+        const pct     = total ? Math.round(count / total * 100) : 0
         const isOther = label === "Others"
         return (
-          <div key={label}>
-            <div className="flex justify-between items-center mb-1">
-              <span className={`text-xs flex-1 pr-2 truncate ${isOther ? "text-gray-400 italic" : "text-gray-700 font-medium"}`}>
-                {label}
-              </span>
-              <div className="flex gap-1.5 items-center flex-shrink-0">
-                <span className="text-sm font-bold text-gray-900">{count}</span>
-                <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
-              </div>
-            </div>
-            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
-              <div className="h-full rounded-full transition-all duration-300"
-                   style={{ width: `${barPct}%`, background: isOther ? "#CBD5E1" : accent }} />
-            </div>
+          <div key={label} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
+            <span className="w-5 text-xs font-bold flex-shrink-0 text-right"
+                  style={{ color: isOther ? "#CBD5E1" : accent }}>
+              {i + 1}
+            </span>
+            <span className={`flex-1 text-xs truncate min-w-0 ${isOther ? "text-gray-400 italic" : "text-gray-700"}`}
+                  title={label}>
+              {label}
+            </span>
+            <span className="text-sm font-bold text-gray-900 flex-shrink-0">{count}</span>
+            <span className="text-xs font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0 tabular-nums w-10 text-center"
+                  style={{
+                    background: isOther ? "#F1F5F9" : `${accent}18`,
+                    color: isOther ? "#94A3B8" : accent,
+                  }}>
+              {pct}%
+            </span>
           </div>
         )
       })}
@@ -2176,19 +2177,38 @@ function PaidAppsPanel({ appRows }) {
         )}
       </div>
 
-      {/* Trend chart — weekly mode only */}
+      {/* Week tiles — weekly mode only */}
       {viewMode === "weekly" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-gray-800 mb-4">Weekly Trend (last 8 weeks)</div>
-          <ResponsiveContainer width="100%" height={150}>
-            <BarChart data={weeklyTrend} barCategoryGap="35%">
-              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} allowDecimals={false} />
-              <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
-              <Bar dataKey="count" name="Paid Apps" fill="#4338CA" radius={[4, 4, 0, 0]} />
-            </BarChart>
-          </ResponsiveContainer>
+          <div className="text-sm font-semibold text-gray-800 mb-4">8-Week Trend</div>
+          <div className="grid grid-cols-8 gap-2">
+            {weeklyTrend.map((w, i) => {
+              const prev    = i > 0 ? weeklyTrend[i - 1].count : null
+              const delta   = prev !== null ? w.count - prev : null
+              const maxVal  = Math.max(...weeklyTrend.map(x => x.count), 1)
+              const isLast  = i === weeklyTrend.length - 1
+              const alpha   = w.count > 0 ? 0.06 + (w.count / maxVal) * 0.14 : 0.03
+              return (
+                <div key={i}
+                     className="flex flex-col items-center gap-1 py-3 px-1 rounded-xl text-center transition-all"
+                     style={{ background: isLast ? "#EEF2FF" : `rgba(67,56,202,${alpha})` }}>
+                  <div className="text-xs leading-tight font-medium" style={{ color: isLast ? "#6366F1" : "#94A3B8" }}>
+                    {w.name}
+                  </div>
+                  <div className="text-2xl font-extrabold leading-none mt-1"
+                       style={{ color: w.count > 0 ? (isLast ? "#4338CA" : "#1E1B4B") : "#E2E8F0" }}>
+                    {w.count}
+                  </div>
+                  {delta !== null && (
+                    <div className="text-xs font-semibold leading-none"
+                         style={{ color: delta > 0 ? "#059669" : delta < 0 ? "#DC2626" : "#94A3B8" }}>
+                      {delta > 0 ? `↑${delta}` : delta < 0 ? `↓${Math.abs(delta)}` : "—"}
+                    </div>
+                  )}
+                </div>
+              )
+            })}
+          </div>
         </div>
       )}
 
@@ -2206,7 +2226,7 @@ function PaidAppsPanel({ appRows }) {
                     {total} total
                   </span>
                 </div>
-                <PaidAttrBar items={data} total={total} accent={accent} />
+                <PaidAttrList items={data} total={total} accent={accent} />
               </div>
             )
           })}
