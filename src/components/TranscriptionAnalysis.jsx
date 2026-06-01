@@ -598,6 +598,486 @@ function MatchRow({ match, personas }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+function serialToDate(serial) {
+  const n = Number(serial)
+  if (!serial || isNaN(n) || n < 1) return null
+  return new Date((n - 25569) * 86400000)
+}
+
+function getWeekMonday(date) {
+  const d = new Date(date)
+  d.setHours(0, 0, 0, 0)
+  const day = d.getDay()
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day))
+  return d
+}
+
+function getDefaultWeekStart() {
+  const mon = getWeekMonday(new Date())
+  mon.setDate(mon.getDate() - 7)
+  return mon
+}
+
+function fmtDate(date) {
+  if (!date) return "—"
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+}
+
+function formatWeekLabel(weekStart) {
+  const end = new Date(weekStart)
+  end.setDate(end.getDate() + 5)
+  return `${fmtDate(weekStart)} – ${fmtDate(end)}`
+}
+
+const DAYS_BUCKET_ORDER = ["Same day", "1–3 days", "4–7 days", "8–14 days", "15–30 days", "30+ days", "Unknown"]
+
+function getDaysBucket(days) {
+  if (days === null || days === undefined || isNaN(days)) return "Unknown"
+  if (days <= 0)  return "Same day"
+  if (days <= 3)  return "1–3 days"
+  if (days <= 7)  return "4–7 days"
+  if (days <= 14) return "8–14 days"
+  if (days <= 30) return "15–30 days"
+  return "30+ days"
+}
+
+function getWorkStatus(gradYear) {
+  const year = parseInt(gradYear)
+  if (isNaN(year)) return "Unknown"
+  const now = new Date().getFullYear()
+  if (year < now)  return "Working Professional"
+  if (year === now) return "Fresher"
+  return "Student"
+}
+
+function normalizeCounsellorPaid(raw) {
+  const n = (raw || "").trim().toLowerCase()
+  if (n.startsWith("jasmeet")) return "Jasmeet Kaur"
+  if (n.startsWith("komal"))   return "Komal Pandey"
+  if (n.startsWith("prerna"))  return "Prerna Kaushik"
+  return (raw || "").trim() || "Unknown"
+}
+
+function parsePaidRow(row) {
+  if (!row) return null
+  const status = (row[2] || "").trim().toLowerCase()
+  if (status !== "completed") return null
+
+  const regSerial  = Number(row[16])
+  const paidSerial = Number(row[59])
+  const registeredOn = serialToDate(regSerial)
+  const paidOn       = serialToDate(paidSerial)
+  if (!paidOn) return null
+
+  const daysToConvert = (registeredOn && paidOn)
+    ? Math.round((paidOn - registeredOn) / 86400000)
+    : null
+
+  const gradYear = parseInt(row[86]) || null
+
+  return {
+    name:        (row[12] || "").trim(),
+    email:       (row[13] || "").trim(),
+    mobile:      (row[14] || "").trim(),
+    source:      (row[18] || "").trim() || "Unknown",
+    medium:      (row[19] || "").trim() || "Unknown",
+    campaign:    (row[20] || "").trim() || "Unknown",
+    counsellor:  normalizeCounsellorPaid(row[43]),
+    registeredOn,
+    paidOn,
+    daysToConvert,
+    daysBucket:  getDaysBucket(daysToConvert),
+    state:       (row[74] || "").trim() || "Unknown",
+    city:        (row[75] || "").trim() || "Unknown",
+    gradYear:    gradYear ? String(gradYear) : "Unknown",
+    workStatus:  getWorkStatus(gradYear),
+    college:     (row[105] || "").trim() || "Unknown",
+    degree:      (row[107] || "").trim() || "Unknown",
+    company:     (row[134] || "").trim() || "Unknown",
+    role:        (row[135] || "").trim() || "Unknown",
+  }
+}
+
+function groupRank(leads, field, topN = 8) {
+  const counts = {}
+  for (const l of leads) {
+    const v = (l[field] || "Unknown") || "Unknown"
+    counts[v] = (counts[v] || 0) + 1
+  }
+  const sorted = Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => b.count - a.count)
+  if (sorted.length <= topN) return sorted
+  const top = sorted.slice(0, topN)
+  const rest = sorted.slice(topN).reduce((s, x) => s + x.count, 0)
+  return [...top, { label: "Others", count: rest }]
+}
+
+function groupDaysBuckets(leads) {
+  const counts = {}
+  for (const l of leads) counts[l.daysBucket] = (counts[l.daysBucket] || 0) + 1
+  return DAYS_BUCKET_ORDER.filter(b => counts[b]).map(b => ({ label: b, count: counts[b] }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — WEEK NAV
+// ─────────────────────────────────────────────────────────────────────────────
+
+function WeekNav({ weekStart, onChange }) {
+  const thisMonday = getWeekMonday(new Date())
+  const atPresent  = weekStart >= thisMonday
+
+  function shift(n) {
+    const d = new Date(weekStart)
+    d.setDate(d.getDate() + n * 7)
+    onChange(d)
+  }
+
+  const BTN = (dir) => ({
+    width: 34, height: 34, borderRadius: 8, border: "1px solid #E2E8F0",
+    background: dir === 1 && atPresent ? "#F8FAFC" : "#FFFFFF",
+    cursor: dir === 1 && atPresent ? "not-allowed" : "pointer",
+    fontSize: 16, color: dir === 1 && atPresent ? "#CBD5E1" : "#475569",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    fontFamily: "inherit", flexShrink: 0,
+  })
+
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12,
+      background: "#FFFFFF", border: "1px solid #E2E8F0",
+      borderRadius: 12, padding: "12px 18px", marginBottom: 4,
+    }}>
+      <button style={BTN(-1)} onClick={() => shift(-1)}>‹</button>
+      <div style={{ flex: 1, textAlign: "center" }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: "#94A3B8", letterSpacing: "1px", marginBottom: 3 }}>
+          WEEK · MON – SAT
+        </div>
+        <div style={{ fontSize: 15, fontWeight: 700, color: "#0F172A" }}>
+          {formatWeekLabel(weekStart)}
+        </div>
+      </div>
+      <button style={BTN(1)} onClick={() => !atPresent && shift(1)}>›</button>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — ATTRIBUTION CARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AttributionCard({ title, icon, data, total, accent = "#4F46E5" }) {
+  if (!data || data.length === 0) return (
+    <Card>
+      <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A", marginBottom: 12 }}>
+        {icon} {title}
+      </div>
+      <div style={{ fontSize: 12, color: "#94A3B8" }}>No data for this week</div>
+    </Card>
+  )
+  const maxCount = Math.max(...data.map(d => d.count), 1)
+  return (
+    <Card>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: "#0F172A" }}>{icon} {title}</div>
+        <span style={{
+          fontSize: 10, fontWeight: 700, color: "#94A3B8",
+          background: "#F8FAFC", border: "1px solid #E2E8F0",
+          borderRadius: 6, padding: "2px 8px",
+        }}>{total} total</span>
+      </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+        {data.map(({ label, count }) => {
+          const pct    = Math.round(count / total * 100)
+          const barPct = Math.round(count / maxCount * 100)
+          const isOther = label === "Others"
+          return (
+            <div key={label}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 3 }}>
+                <span style={{
+                  fontSize: 12, color: "#334155", fontWeight: isOther ? 400 : 500,
+                  fontStyle: isOther ? "italic" : "normal",
+                  flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", paddingRight: 8,
+                }}>{label}</span>
+                <div style={{ display: "flex", gap: 5, flexShrink: 0, alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: "#0F172A" }}>{count}</span>
+                  <span style={{ fontSize: 11, color: "#94A3B8", minWidth: 30, textAlign: "right" }}>{pct}%</span>
+                </div>
+              </div>
+              <div style={{ height: 5, borderRadius: 5, background: "#F1F5F9", overflow: "hidden" }}>
+                <div style={{
+                  width: `${barPct}%`, height: "100%", borderRadius: 5,
+                  background: isOther ? "#CBD5E1" : accent,
+                  transition: "width .35s ease",
+                }} />
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </Card>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — DRILL-DOWN DRAWER
+// ─────────────────────────────────────────────────────────────────────────────
+
+const TH_STYLE = {
+  padding: "10px 12px", textAlign: "left",
+  fontSize: 10, fontWeight: 700, color: "#64748B",
+  letterSpacing: ".5px", textTransform: "uppercase",
+  borderBottom: "2px solid #E2E8F0", whiteSpace: "nowrap",
+  background: "#F8FAFC",
+}
+
+function DrillDrawer({ leads, weekLabel, onClose }) {
+  return (
+    <div
+      style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(15,23,42,.45)", backdropFilter: "blur(2px)" }}
+      onClick={onClose}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          position: "absolute", right: 0, top: 0, bottom: 0,
+          width: "min(1020px, 96vw)",
+          background: "#FFFFFF", display: "flex", flexDirection: "column",
+          boxShadow: "-8px 0 32px rgba(0,0,0,.18)",
+        }}
+      >
+        {/* Header */}
+        <div style={{
+          padding: "18px 24px", borderBottom: "1px solid #E2E8F0", flexShrink: 0,
+          background: "linear-gradient(135deg, #1E1B4B, #312E81)",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <div>
+            <div style={{ fontSize: 10, fontWeight: 700, color: "#A5B4FC", letterSpacing: "1px", marginBottom: 4 }}>
+              PAID APPS · DRILL-DOWN
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: "#FFFFFF" }}>
+              {leads.length} paid app{leads.length !== 1 ? "s" : ""} &nbsp;·&nbsp; {weekLabel}
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            width: 36, height: 36, borderRadius: 8, border: "none",
+            background: "rgba(255,255,255,.15)", color: "#E0E7FF",
+            fontSize: 20, cursor: "pointer", fontFamily: "inherit",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>×</button>
+        </div>
+
+        {/* Table */}
+        <div style={{ overflow: "auto", flex: 1 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead>
+              <tr>
+                {["#", "Name", "Counsellor", "Source", "Medium", "City", "State",
+                  "College", "Degree", "Grad Yr", "Work Status", "Company", "Role",
+                  "Paid On", "Days to Convert"].map(h => (
+                  <th key={h} style={TH_STYLE}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l, i) => {
+                const wsColor = l.workStatus === "Working Professional"
+                  ? { bg: "#ECFDF5", text: "#065F46" }
+                  : l.workStatus === "Fresher"
+                  ? { bg: "#EEF2FF", text: "#3730A3" }
+                  : { bg: "#F8FAFC", text: "#64748B" }
+                return (
+                  <tr key={i} style={{ borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "#FFF" : "#FAFAFA" }}>
+                    <td style={{ padding: "9px 12px", color: "#94A3B8", fontWeight: 600 }}>{i + 1}</td>
+                    <td style={{ padding: "9px 12px", fontWeight: 600, color: "#0F172A", whiteSpace: "nowrap" }}>{l.name || "—"}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569", whiteSpace: "nowrap" }}>{l.counsellor}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569" }}>{l.source}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569" }}>{l.medium}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569" }}>{l.city}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569" }}>{l.state}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.college}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569" }}>{l.degree}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569", textAlign: "center" }}>{l.gradYear}</td>
+                    <td style={{ padding: "9px 12px" }}>
+                      <span style={{
+                        fontSize: 10, fontWeight: 600, padding: "2px 8px", borderRadius: 20,
+                        background: wsColor.bg, color: wsColor.text,
+                      }}>{l.workStatus}</span>
+                    </td>
+                    <td style={{ padding: "9px 12px", color: "#475569", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.company}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569", maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.role}</td>
+                    <td style={{ padding: "9px 12px", color: "#475569", whiteSpace: "nowrap" }}>{fmtDate(l.paidOn)}</td>
+                    <td style={{ padding: "9px 12px", textAlign: "center", fontWeight: 600,
+                      color: l.daysToConvert <= 3 ? "#059669" : l.daysToConvert <= 14 ? "#D97706" : "#DC2626" }}>
+                      {l.daysToConvert !== null ? `${l.daysToConvert}d` : "—"}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS TAB
+// ─────────────────────────────────────────────────────────────────────────────
+
+function PaidAppsTab() {
+  const [weekStart,   setWeekStart]   = useState(() => getDefaultWeekStart())
+  const [allPaid,     setAllPaid]     = useState([])
+  const [loading,     setLoading]     = useState(true)
+  const [error,       setError]       = useState("")
+  const [drawerOpen,  setDrawerOpen]  = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true); setError("")
+      try {
+        const { fetchSheetData } = await import('../utils/sheetsApi')
+        const rows = await fetchSheetData('App Start Dump', 'A:EF')
+        if (cancelled) return
+        const paid = (rows || []).slice(1).map(parsePaidRow).filter(Boolean)
+        setAllPaid(paid)
+      } catch (e) {
+        if (!cancelled) setError(e.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  const weekLeads = useMemo(() => {
+    const start = new Date(weekStart); start.setHours(0, 0, 0, 0)
+    const end   = new Date(weekStart); end.setDate(end.getDate() + 5); end.setHours(23, 59, 59, 999)
+    return allPaid.filter(l => l.paidOn >= start && l.paidOn <= end)
+  }, [allPaid, weekStart])
+
+  const total = weekLeads.length
+
+  const attrs = useMemo(() => ({
+    source:      groupRank(weekLeads, "source"),
+    medium:      groupRank(weekLeads, "medium"),
+    campaign:    groupRank(weekLeads, "campaign"),
+    counsellor:  groupRank(weekLeads, "counsellor"),
+    workStatus:  groupRank(weekLeads, "workStatus"),
+    city:        groupRank(weekLeads, "city"),
+    state:       groupRank(weekLeads, "state"),
+    gradYear:    groupRank(weekLeads, "gradYear"),
+    degree:      groupRank(weekLeads, "degree"),
+    college:     groupRank(weekLeads, "college"),
+    company:     groupRank(weekLeads, "company"),
+    role:        groupRank(weekLeads, "role"),
+    daysBucket:  groupDaysBuckets(weekLeads),
+  }), [weekLeads])
+
+  if (loading) return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 14, padding: 80 }}>
+      <div style={{ width: 40, height: 40, borderRadius: "50%", border: "3px solid #E2E8F0", borderTopColor: "#4F46E5", animation: "spin 0.8s linear infinite" }} />
+      <div style={{ fontSize: 13, color: "#64748B" }}>Loading App Start Dump…</div>
+    </div>
+  )
+
+  if (error) return (
+    <Card style={{ borderLeft: "4px solid #EF4444", maxWidth: 540 }}>
+      <div style={{ display: "flex", gap: 12 }}>
+        <span style={{ fontSize: 20 }}>⚠️</span>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 600, color: "#0F172A", marginBottom: 4 }}>Failed to load data</div>
+          <div style={{ fontSize: 12, color: "#64748B" }}>{error}</div>
+        </div>
+      </div>
+    </Card>
+  )
+
+  const weekLabel = formatWeekLabel(weekStart)
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <WeekNav weekStart={weekStart} onChange={setWeekStart} />
+
+      {/* Total hero card — click to drill down */}
+      <div
+        onClick={() => total > 0 && setDrawerOpen(true)}
+        style={{
+          background: total > 0
+            ? "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)"
+            : "#F8FAFC",
+          border: total > 0 ? "none" : "1px solid #E2E8F0",
+          borderRadius: 16, padding: "28px 32px",
+          cursor: total > 0 ? "pointer" : "default",
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+          transition: "filter .15s",
+        }}
+        onMouseEnter={e => total > 0 && (e.currentTarget.style.filter = "brightness(1.07)")}
+        onMouseLeave={e => (e.currentTarget.style.filter = "none")}
+      >
+        <div>
+          <div style={{
+            fontSize: 10, fontWeight: 700, letterSpacing: "1.5px", marginBottom: 10,
+            color: total > 0 ? "#A5B4FC" : "#94A3B8",
+          }}>
+            PAID APPS THIS WEEK
+          </div>
+          <div style={{ fontSize: 64, fontWeight: 800, lineHeight: 1, color: total > 0 ? "#FFFFFF" : "#CBD5E1" }}>
+            {total}
+          </div>
+          <div style={{ fontSize: 13, marginTop: 10, color: total > 0 ? "#C7D2FE" : "#94A3B8" }}>
+            {weekLabel}
+          </div>
+        </div>
+        {total > 0 ? (
+          <div style={{
+            background: "rgba(255,255,255,.15)", border: "1px solid rgba(255,255,255,.25)",
+            borderRadius: 12, padding: "14px 22px",
+            display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+          }}>
+            <div style={{ fontSize: 22 }}>📋</div>
+            <div style={{ fontSize: 12, color: "#E0E7FF", fontWeight: 600 }}>View all {total}</div>
+            <div style={{ fontSize: 11, color: "#A5B4FC" }}>raw data →</div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 13, color: "#94A3B8" }}>No paid apps in this period</div>
+        )}
+      </div>
+
+      {/* Attribution grid — only shown when there's data */}
+      {total > 0 && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(330px, 1fr))", gap: 14 }}>
+          <AttributionCard title="Source"            icon="🌐" data={attrs.source}      total={total} accent="#4F46E5" />
+          <AttributionCard title="Medium / Channel"  icon="📡" data={attrs.medium}      total={total} accent="#0891B2" />
+          <AttributionCard title="Campaign"          icon="🎯" data={attrs.campaign}    total={total} accent="#7C3AED" />
+          <AttributionCard title="Counsellor"        icon="🧑‍💼" data={attrs.counsellor}  total={total} accent="#059669" />
+          <AttributionCard title="Work Status"       icon="💼" data={attrs.workStatus}  total={total} accent="#D97706" />
+          <AttributionCard title="Days to Convert"   icon="⏱️" data={attrs.daysBucket}  total={total} accent="#DC2626" />
+          <AttributionCard title="City"              icon="🏙️" data={attrs.city}        total={total} accent="#0891B2" />
+          <AttributionCard title="State"             icon="📍" data={attrs.state}       total={total} accent="#475569" />
+          <AttributionCard title="Graduation Year"   icon="🎓" data={attrs.gradYear}    total={total} accent="#7C3AED" />
+          <AttributionCard title="Degree"            icon="📜" data={attrs.degree}      total={total} accent="#059669" />
+          <AttributionCard title="College"           icon="🏛️" data={attrs.college}     total={total} accent="#D97706" />
+          <AttributionCard title="Company"           icon="🏢" data={attrs.company}     total={total} accent="#334155" />
+          <AttributionCard title="Role / Designation" icon="👤" data={attrs.role}       total={total} accent="#4F46E5" />
+        </div>
+      )}
+
+      {drawerOpen && (
+        <DrillDrawer leads={weekLeads} weekLabel={weekLabel} onClose={() => setDrawerOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ROOT COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -749,11 +1229,12 @@ export default function TranscriptionAnalysis() {
         </div>
 
         {/* Tab bar */}
-        <div style={{ display: "flex", gap: 4, marginTop: 20 }}>
+        <div style={{ display: "flex", gap: 4, marginTop: 20, flexWrap: "wrap" }}>
           {[
-            ["overview",  "📊 Overview"],
-            ["personas",  `🧠 Personas (${personas.length})`],
-            ["matches",   `🎯 Live Matches (${matches.length})`],
+            ["overview",   "📊 Overview"],
+            ["personas",   `🧠 Personas (${personas.length})`],
+            ["matches",    `🎯 Live Matches (${matches.length})`],
+            ["paid-apps",  "📅 Paid Apps"],
           ].map(([k, l]) => (
             <button key={k} onClick={() => setTab(k)} style={{
               padding: "8px 16px", borderRadius: 8, border: "none",
@@ -771,7 +1252,10 @@ export default function TranscriptionAnalysis() {
 
       {/* ── Content ── */}
       <div style={{ padding: 24 }}>
-        {noData ? (
+        {/* Paid Apps tab is independent of static JSON — always render it */}
+        {tab === "paid-apps" && <PaidAppsTab />}
+
+        {noData && tab !== "paid-apps" ? (
           <Card style={{ textAlign: "center", padding: 60, maxWidth: 480, margin: "40px auto" }}>
             <div style={{ fontSize: 40, marginBottom: 16 }}>🎙️</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#0F172A", marginBottom: 8 }}>
@@ -787,7 +1271,7 @@ export default function TranscriptionAnalysis() {
               python run_paid_pipeline.py
             </code>
           </Card>
-        ) : (
+        ) : tab !== "paid-apps" && (
           <>
             {tab === "overview" && (
               <OverviewTab summary={summary} personas={personas} matches={matches} />
