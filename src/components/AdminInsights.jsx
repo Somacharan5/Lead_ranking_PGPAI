@@ -2177,38 +2177,19 @@ function PaidAppsPanel({ appRows }) {
         )}
       </div>
 
-      {/* Week tiles — weekly mode only */}
+      {/* Trend chart — weekly mode only */}
       {viewMode === "weekly" && (
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
-          <div className="text-sm font-semibold text-gray-800 mb-4">8-Week Trend</div>
-          <div className="grid grid-cols-8 gap-2">
-            {weeklyTrend.map((w, i) => {
-              const prev    = i > 0 ? weeklyTrend[i - 1].count : null
-              const delta   = prev !== null ? w.count - prev : null
-              const maxVal  = Math.max(...weeklyTrend.map(x => x.count), 1)
-              const isLast  = i === weeklyTrend.length - 1
-              const alpha   = w.count > 0 ? 0.06 + (w.count / maxVal) * 0.14 : 0.03
-              return (
-                <div key={i}
-                     className="flex flex-col items-center gap-1 py-3 px-1 rounded-xl text-center transition-all"
-                     style={{ background: isLast ? "#EEF2FF" : `rgba(67,56,202,${alpha})` }}>
-                  <div className="text-xs leading-tight font-medium" style={{ color: isLast ? "#6366F1" : "#94A3B8" }}>
-                    {w.name}
-                  </div>
-                  <div className="text-2xl font-extrabold leading-none mt-1"
-                       style={{ color: w.count > 0 ? (isLast ? "#4338CA" : "#1E1B4B") : "#E2E8F0" }}>
-                    {w.count}
-                  </div>
-                  {delta !== null && (
-                    <div className="text-xs font-semibold leading-none"
-                         style={{ color: delta > 0 ? "#059669" : delta < 0 ? "#DC2626" : "#94A3B8" }}>
-                      {delta > 0 ? `↑${delta}` : delta < 0 ? `↓${Math.abs(delta)}` : "—"}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
+          <div className="text-sm font-semibold text-gray-800 mb-4">Weekly Trend (last 8 weeks)</div>
+          <ResponsiveContainer width="100%" height={150}>
+            <BarChart data={weeklyTrend} barCategoryGap="35%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+              <Bar dataKey="count" name="Paid Apps" fill="#4338CA" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
         </div>
       )}
 
