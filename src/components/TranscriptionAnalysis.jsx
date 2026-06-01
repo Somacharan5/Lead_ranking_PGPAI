@@ -693,10 +693,8 @@ function parsePaidRow(row) {
   const status = (row[2] || "").trim().toLowerCase()
   if (status !== "completed") return null
 
-  const registeredOn = serialToDate(row[16])                        // Q — Registered On
-  const paidOn       = serialToDate(row[59])                        // BH — "31 Dec 2025, 04:23 PM"
-                    || serialToDate(row[58])                        // BG — Last Activity (fallback)
-                    || registeredOn                                 // Q  — last resort
+  const registeredOn = serialToDate(row[16])   // Q  — Registered On
+  const paidOn       = serialToDate(row[59])   // BH — Application fee paid on
   if (!paidOn) return null
 
   const daysToConvert = (registeredOn && paidOn)
@@ -984,9 +982,7 @@ function PaidAppsTab() {
         const statusSample = [...new Set(dataRows.slice(0, 200).map(r => (r[2] || "").trim()))].slice(0, 8)
 
         // Stage 2: of completed rows, how many have a valid BH (idx 59) paid date
-        const withPaidDate = completedRows.filter(r =>
-          serialToDate(r[59]) || serialToDate(r[58]) || serialToDate(r[16])
-        )
+        const withPaidDate = completedRows.filter(r => serialToDate(r[59]))
 
         // Stage 3: final parsed set
         const paid = dataRows.map(parsePaidRow).filter(Boolean)
@@ -1078,7 +1074,7 @@ function PaidAppsTab() {
             {[
               ["App Start Dump rows fetched",                debug.totalRows,      "#0F172A"],
               ["Rows with Payment Status = completed",       debug.completedRows,  debug.completedRows > 0 ? "#059669" : "#DC2626"],
-              ["Completed rows WITH any date (BH→BG→Q fallback)", debug.withPaidDate, debug.withPaidDate > 0 ? "#059669" : "#DC2626"],
+              ["Completed rows WITH paid date (col BH)",           debug.withPaidDate, debug.withPaidDate > 0 ? "#059669" : "#DC2626"],
               ["Final parsed paid records (allPaid)",        debug.finalParsed,    debug.finalParsed > 0   ? "#059669" : "#DC2626"],
               ["In selected week",                           total,                total > 0               ? "#059669" : "#DC2626"],
             ].map(([label, val, color]) => (
