@@ -936,16 +936,52 @@ function PaidAppsTab() {
   const [loading,     setLoading]     = useState(true)
   const [error,       setError]       = useState("")
   const [drawerOpen,  setDrawerOpen]  = useState(false)
+  const [debug,       setDebug]       = useState(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError("")
+      setLoading(true); setError(""); setDebug(null)
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const rows = await fetchSheetData('App Start Dump', 'A:EF')
         if (cancelled) return
-        const paid = (rows || []).slice(1).map(parsePaidRow).filter(Boolean)
+
+        const dataRows   = (rows || []).slice(1)
+        const totalRows  = dataRows.length
+
+        // Stage 1: rows where Payment Status (col C, idx 2) = "completed"
+        const completedRows = dataRows.filter(r => (r[2] || "").trim().toLowerCase() === "completed")
+
+        // Sample status values for diagnosis
+        const statusSample = [...new Set(dataRows.slice(0, 200).map(r => (r[2] || "").trim()))].slice(0, 8)
+
+        // Stage 2: of completed rows, how many have a valid BH (idx 59) paid date
+        const withPaidDate = completedRows.filter(r => {
+          const n = Number(r[59])
+          return !isNaN(n) && n > 1
+        })
+
+        // Stage 3: final parsed set
+        const paid = dataRows.map(parsePaidRow).filter(Boolean)
+
+        console.log('[PaidApps] Total rows:', totalRows)
+        console.log('[PaidApps] Status values (sample):', statusSample)
+        console.log('[PaidApps] Completed rows:', completedRows.length)
+        console.log('[PaidApps] Completed WITH paid date (BH):', withPaidDate.length)
+        console.log('[PaidApps] Final parsed paid:', paid.length)
+        if (completedRows.length > 0) {
+          console.log('[PaidApps] Sample completed row BH (idx 59):', completedRows[0][59])
+          console.log('[PaidApps] Sample completed row length:', completedRows[0].length)
+        }
+
+        setDebug({
+          totalRows,
+          statusSample,
+          completedRows: completedRows.length,
+          withPaidDate:  withPaidDate.length,
+          finalParsed:   paid.length,
+        })
         setAllPaid(paid)
       } catch (e) {
         if (!cancelled) setError(e.message)
@@ -1005,6 +1041,40 @@ function PaidAppsTab() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <WeekNav weekStart={weekStart} onChange={setWeekStart} />
+
+      {/* ── Diagnostic panel — visible when data is missing ── */}
+      {debug && (debug.finalParsed === 0 || total === 0) && (
+        <Card style={{ borderLeft: "4px solid #F59E0B", background: "#FFFBEB" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#92400E", marginBottom: 10 }}>
+            🔍 Diagnostic — where records are being filtered
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {[
+              ["App Start Dump rows fetched",                debug.totalRows,      "#0F172A"],
+              ["Rows with Payment Status = completed",       debug.completedRows,  debug.completedRows > 0 ? "#059669" : "#DC2626"],
+              ["Completed rows WITH paid date (col BH=59)", debug.withPaidDate,   debug.withPaidDate > 0  ? "#059669" : "#DC2626"],
+              ["Final parsed paid records (allPaid)",        debug.finalParsed,    debug.finalParsed > 0   ? "#059669" : "#DC2626"],
+              ["In selected week",                           total,                total > 0               ? "#059669" : "#DC2626"],
+            ].map(([label, val, color]) => (
+              <div key={label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: "#78350F" }}>{label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color }}>{val}</span>
+              </div>
+            ))}
+            {debug.statusSample.length > 0 && (
+              <div style={{ marginTop: 6, padding: "8px 10px", background: "#FEF3C7", borderRadius: 6 }}>
+                <span style={{ fontSize: 11, color: "#92400E", fontWeight: 600 }}>Status values seen in col C: </span>
+                <span style={{ fontSize: 11, color: "#78350F" }}>{debug.statusSample.join(" · ") || "empty"}</span>
+              </div>
+            )}
+            {debug.finalParsed > 0 && total === 0 && (
+              <div style={{ marginTop: 6, padding: "8px 10px", background: "#DCFCE7", borderRadius: 6, fontSize: 11, color: "#166534" }}>
+                ✅ {debug.finalParsed} paid records found — none fall in {weekLabel}. Try navigating to a different week.
+              </div>
+            )}
+          </div>
+        </Card>
+      )}
 
       {/* Total hero card — click to drill down */}
       <div
