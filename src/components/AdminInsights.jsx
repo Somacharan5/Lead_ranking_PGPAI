@@ -1818,7 +1818,7 @@ function fmtPaidDate(date) {
 }
 
 function fmtPaidWeekLabel(weekStart) {
-  const end = new Date(weekStart); end.setDate(end.getDate() + 5)
+  const end = new Date(weekStart); end.setDate(end.getDate() + 6)
   return `${fmtPaidDate(weekStart)} – ${fmtPaidDate(end)}`
 }
 
@@ -1885,6 +1885,12 @@ function paidGroupRank(leads, field, topN = 8) {
   return [...top, { label: "Others", count: rest }]
 }
 
+function paidGroupRankFull(leads, field) {
+  const counts = {}
+  for (const l of leads) { const v = (l[field] || "Unknown") || "Unknown"; counts[v] = (counts[v] || 0) + 1 }
+  return Object.entries(counts).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count)
+}
+
 function paidGroupDaysBuckets(leads) {
   const counts = {}
   for (const l of leads) counts[l.daysBucket] = (counts[l.daysBucket] || 0) + 1
@@ -1944,6 +1950,59 @@ function PaidAttrList({ items, total, accent }) {
         )
       })}
     </div>
+  )
+}
+
+function PaidAttrDrillDrawer({ title, icon, field, leads, total, accent, onClose }) {
+  const fullList = useMemo(() => {
+    if (field === "daysBucket") return paidGroupDaysBuckets(leads)
+    return paidGroupRankFull(leads, field)
+  }, [leads, field])
+
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full z-50 bg-white shadow-2xl flex flex-col"
+           style={{ width: "min(440px, 95vw)" }}
+           onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
+          <div>
+            <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: accent }}>
+              {icon} {title} · Full Breakdown
+            </div>
+            <div className="text-base font-bold text-gray-900">
+              {fullList.length} unique value{fullList.length !== 1 ? "s" : ""} · {total} total
+            </div>
+          </div>
+          <button onClick={onClose}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-500 text-xl transition">
+            ✕
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-5">
+          <div className="flex flex-col divide-y divide-gray-50">
+            {fullList.map(({ label, count }, i) => {
+              const pct = total ? Math.round(count / total * 100) : 0
+              return (
+                <div key={label} className="flex items-center gap-3 py-2.5 first:pt-0 last:pb-0">
+                  <span className="w-7 text-xs font-bold flex-shrink-0 text-right" style={{ color: accent }}>
+                    {i + 1}
+                  </span>
+                  <span className="flex-1 text-sm text-gray-700 min-w-0 truncate" title={label}>
+                    {label}
+                  </span>
+                  <span className="text-sm font-bold text-gray-900 flex-shrink-0">{count}</span>
+                  <span className="text-xs font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0 tabular-nums w-12 text-center"
+                        style={{ background: `${accent}18`, color: accent }}>
+                    {pct}%
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      </div>
+    </>
   )
 }
 
@@ -2028,6 +2087,7 @@ function PaidAppsPanel({ appRows }) {
   const [viewMode,   setViewMode]   = useState("weekly")
   const [weekStart,  setWeekStart]  = useState(() => paidGetDefaultWeekStart())
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [drillAttr,  setDrillAttr]  = useState(null)
 
   const allPaid = useMemo(() =>
     (appRows || []).slice(1).map(parsePaidAppRow).filter(Boolean)
@@ -2036,7 +2096,7 @@ function PaidAppsPanel({ appRows }) {
   const weekLeads = useMemo(() => {
     if (viewMode === "overall") return allPaid
     const start = new Date(weekStart); start.setHours(0, 0, 0, 0)
-    const end   = new Date(weekStart); end.setDate(end.getDate() + 5); end.setHours(23, 59, 59, 999)
+    const end   = new Date(weekStart); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
     return allPaid.filter(l => l.paidOn >= start && l.paidOn <= end)
   }, [allPaid, weekStart, viewMode])
 
@@ -2047,7 +2107,7 @@ function PaidAppsPanel({ appRows }) {
     const weeks = []
     for (let i = 7; i >= 0; i--) {
       const start = new Date(thisMonday); start.setDate(start.getDate() - i * 7); start.setHours(0, 0, 0, 0)
-      const end   = new Date(start); end.setDate(end.getDate() + 5); end.setHours(23, 59, 59, 999)
+      const end   = new Date(start); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
       const count = allPaid.filter(l => l.paidOn >= start && l.paidOn <= end).length
       weeks.push({ name: fmtPaidDate(start).slice(0, -5), count })
     }
@@ -2200,11 +2260,13 @@ function PaidAppsPanel({ appRows }) {
             const data = field === "daysBucket" ? attrs.daysBucket : attrs[field]
             if (!data || data.length === 0) return null
             return (
-              <div key={field} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+              <div key={field}
+                   className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all"
+                   onClick={() => setDrillAttr({ field, title, icon, accent })}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-gray-800">{icon} {title}</div>
                   <span className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md px-2 py-0.5">
-                    {total} total
+                    {total} total · click to expand
                   </span>
                 </div>
                 <PaidAttrList items={data} total={total} accent={accent} />
@@ -2229,6 +2291,18 @@ function PaidAppsPanel({ appRows }) {
 
       {drawerOpen && (
         <PaidAppsDrawer leads={weekLeads} label={viewLabel} onClose={() => setDrawerOpen(false)} />
+      )}
+
+      {drillAttr && (
+        <PaidAttrDrillDrawer
+          title={drillAttr.title}
+          icon={drillAttr.icon}
+          field={drillAttr.field}
+          leads={weekLeads}
+          total={total}
+          accent={drillAttr.accent}
+          onClose={() => setDrillAttr(null)}
+        />
       )}
     </div>
   )
