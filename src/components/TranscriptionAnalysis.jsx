@@ -601,10 +601,37 @@ function MatchRow({ match, personas }) {
 // PAID APPS — HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
+const MONTHS = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 }
+
 function serialToDate(serial) {
+  if (!serial && serial !== 0) return null
+
+  // Numeric Excel serial (e.g. 46201.79)
   const n = Number(serial)
-  if (!serial || isNaN(n) || n < 1) return null
-  return new Date((n - 25569) * 86400000)
+  if (!isNaN(n) && n > 1) return new Date((n - 25569) * 86400000)
+
+  // String format: "31 Dec 2025, 04:23 PM"
+  if (typeof serial === "string") {
+    const m = serial.trim().match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})(?:,\s*(\d{1,2}):(\d{2})\s*(AM|PM))?/i)
+    if (m) {
+      const day = parseInt(m[1])
+      const mon = MONTHS[m[2].toLowerCase()]
+      const yr  = parseInt(m[3])
+      if (mon === undefined) return null
+      let hr = m[4] ? parseInt(m[4]) : 0
+      const mn = m[5] ? parseInt(m[5]) : 0
+      if (m[6]) {
+        if (m[6].toUpperCase() === "PM" && hr !== 12) hr += 12
+        if (m[6].toUpperCase() === "AM" && hr === 12) hr = 0
+      }
+      return new Date(yr, mon, day, hr, mn)
+    }
+    // Fallback: let JS try
+    const d = new Date(serial)
+    return isNaN(d.getTime()) ? null : d
+  }
+
+  return null
 }
 
 function getWeekMonday(date) {
@@ -666,11 +693,10 @@ function parsePaidRow(row) {
   const status = (row[2] || "").trim().toLowerCase()
   if (status !== "completed") return null
 
-  const regSerial        = Number(row[16])
-  const bhSerial         = Number(row[59])  // BH — Application fee paid on (often empty)
-  const bgSerial         = Number(row[58])  // BG — Counsellor Last Activity Date (fallback)
-  const registeredOn     = serialToDate(regSerial)
-  const paidOn           = serialToDate(bhSerial) || serialToDate(bgSerial) || registeredOn
+  const registeredOn = serialToDate(row[16])                        // Q — Registered On
+  const paidOn       = serialToDate(row[59])                        // BH — "31 Dec 2025, 04:23 PM"
+                    || serialToDate(row[58])                        // BG — Last Activity (fallback)
+                    || registeredOn                                 // Q  — last resort
   if (!paidOn) return null
 
   const daysToConvert = (registeredOn && paidOn)
@@ -958,10 +984,9 @@ function PaidAppsTab() {
         const statusSample = [...new Set(dataRows.slice(0, 200).map(r => (r[2] || "").trim()))].slice(0, 8)
 
         // Stage 2: of completed rows, how many have a valid BH (idx 59) paid date
-        const withPaidDate = completedRows.filter(r => {
-          const bh = Number(r[59]), bg = Number(r[58]), q = Number(r[16])
-          return (!isNaN(bh) && bh > 1) || (!isNaN(bg) && bg > 1) || (!isNaN(q) && q > 1)
-        })
+        const withPaidDate = completedRows.filter(r =>
+          serialToDate(r[59]) || serialToDate(r[58]) || serialToDate(r[16])
+        )
 
         // Stage 3: final parsed set
         const paid = dataRows.map(parsePaidRow).filter(Boolean)
