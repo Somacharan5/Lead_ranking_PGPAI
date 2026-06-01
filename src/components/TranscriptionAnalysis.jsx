@@ -666,10 +666,11 @@ function parsePaidRow(row) {
   const status = (row[2] || "").trim().toLowerCase()
   if (status !== "completed") return null
 
-  const regSerial  = Number(row[16])
-  const paidSerial = Number(row[59])
-  const registeredOn = serialToDate(regSerial)
-  const paidOn       = serialToDate(paidSerial)
+  const regSerial        = Number(row[16])
+  const bhSerial         = Number(row[59])  // BH — Application fee paid on (often empty)
+  const bgSerial         = Number(row[58])  // BG — Counsellor Last Activity Date (fallback)
+  const registeredOn     = serialToDate(regSerial)
+  const paidOn           = serialToDate(bhSerial) || serialToDate(bgSerial) || registeredOn
   if (!paidOn) return null
 
   const daysToConvert = (registeredOn && paidOn)
@@ -958,8 +959,8 @@ function PaidAppsTab() {
 
         // Stage 2: of completed rows, how many have a valid BH (idx 59) paid date
         const withPaidDate = completedRows.filter(r => {
-          const n = Number(r[59])
-          return !isNaN(n) && n > 1
+          const bh = Number(r[59]), bg = Number(r[58]), q = Number(r[16])
+          return (!isNaN(bh) && bh > 1) || (!isNaN(bg) && bg > 1) || (!isNaN(q) && q > 1)
         })
 
         // Stage 3: final parsed set
@@ -1052,7 +1053,7 @@ function PaidAppsTab() {
             {[
               ["App Start Dump rows fetched",                debug.totalRows,      "#0F172A"],
               ["Rows with Payment Status = completed",       debug.completedRows,  debug.completedRows > 0 ? "#059669" : "#DC2626"],
-              ["Completed rows WITH paid date (col BH=59)", debug.withPaidDate,   debug.withPaidDate > 0  ? "#059669" : "#DC2626"],
+              ["Completed rows WITH any date (BH→BG→Q fallback)", debug.withPaidDate, debug.withPaidDate > 0 ? "#059669" : "#DC2626"],
               ["Final parsed paid records (allPaid)",        debug.finalParsed,    debug.finalParsed > 0   ? "#059669" : "#DC2626"],
               ["In selected week",                           total,                total > 0               ? "#059669" : "#DC2626"],
             ].map(([label, val, color]) => (
