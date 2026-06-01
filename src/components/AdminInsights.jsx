@@ -1775,6 +1775,465 @@ function DrillDrawer({ drill, onClose }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — HELPERS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_MONTHS = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }
+
+function paidSerialToDate(serial) {
+  if (!serial && serial !== 0) return null
+  const n = Number(serial)
+  if (!isNaN(n) && n > 1) return new Date((n - 25569) * 86400000)
+  if (typeof serial === "string") {
+    const m = serial.trim().match(/^(\d{1,2})\s+([A-Za-z]{3})\s+(\d{4})(?:,\s*(\d{1,2}):(\d{2})\s*(AM|PM))?/i)
+    if (m) {
+      const day = parseInt(m[1]), mon = PA_MONTHS[m[2].toLowerCase()], yr = parseInt(m[3])
+      if (mon === undefined) return null
+      let hr = m[4] ? parseInt(m[4]) : 0
+      const mn2 = m[5] ? parseInt(m[5]) : 0
+      if (m[6]) {
+        if (m[6].toUpperCase() === "PM" && hr !== 12) hr += 12
+        if (m[6].toUpperCase() === "AM" && hr === 12) hr = 0
+      }
+      return new Date(yr, mon, day, hr, mn2)
+    }
+    const d = new Date(serial)
+    return isNaN(d.getTime()) ? null : d
+  }
+  return null
+}
+
+function paidGetWeekMonday(date) {
+  const d = new Date(date); d.setHours(0, 0, 0, 0)
+  const day = d.getDay(); d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day)); return d
+}
+
+function paidGetDefaultWeekStart() {
+  const mon = paidGetWeekMonday(new Date()); mon.setDate(mon.getDate() - 7); return mon
+}
+
+function fmtPaidDate(date) {
+  if (!date) return "—"
+  return date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
+}
+
+function fmtPaidWeekLabel(weekStart) {
+  const end = new Date(weekStart); end.setDate(end.getDate() + 5)
+  return `${fmtPaidDate(weekStart)} – ${fmtPaidDate(end)}`
+}
+
+const PA_DAYS_BUCKET_ORDER = ["Same day", "1–3 days", "4–7 days", "8–14 days", "15–30 days", "30+ days", "Unknown"]
+
+function paidGetDaysBucket(days) {
+  if (days === null || days === undefined || isNaN(days)) return "Unknown"
+  if (days <= 0)  return "Same day"
+  if (days <= 3)  return "1–3 days"
+  if (days <= 7)  return "4–7 days"
+  if (days <= 14) return "8–14 days"
+  if (days <= 30) return "15–30 days"
+  return "30+ days"
+}
+
+function paidGetWorkStatus(gradYear) {
+  const yr = parseInt(gradYear)
+  if (isNaN(yr)) return "Unknown"
+  const now = new Date().getFullYear()
+  if (yr < now)  return "Working Professional"
+  if (yr === now) return "Fresher"
+  return "Student"
+}
+
+function parsePaidAppRow(row) {
+  if (!row) return null
+  const status = (row[2] || "").trim().toLowerCase()
+  if (status !== "completed") return null
+  const registeredOn = paidSerialToDate(row[16])
+  const paidOn       = paidSerialToDate(row[59])
+  if (!paidOn) return null
+  const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
+  const gradYear = parseInt(row[86]) || null
+  return {
+    name:        (row[12] || "").trim(),
+    email:       (row[13] || "").trim(),
+    mobile:      (row[14] || "").trim(),
+    source:      (row[18] || "").trim() || "Unknown",
+    medium:      (row[19] || "").trim() || "Unknown",
+    campaign:    (row[20] || "").trim() || "Unknown",
+    counsellor:  normalizeName(row[43]) || (row[43] || "").trim() || "Unknown",
+    registeredOn,
+    paidOn,
+    daysToConvert,
+    daysBucket:  paidGetDaysBucket(daysToConvert),
+    state:       (row[74] || "").trim() || "Unknown",
+    city:        (row[75] || "").trim() || "Unknown",
+    gradYear:    gradYear ? String(gradYear) : "Unknown",
+    workStatus:  paidGetWorkStatus(gradYear),
+    college:     (row[105] || "").trim() || "Unknown",
+    degree:      (row[107] || "").trim() || "Unknown",
+    company:     (row[134] || "").trim() || "Unknown",
+    role:        (row[135] || "").trim() || "Unknown",
+  }
+}
+
+function paidGroupRank(leads, field, topN = 8) {
+  const counts = {}
+  for (const l of leads) { const v = (l[field] || "Unknown") || "Unknown"; counts[v] = (counts[v] || 0) + 1 }
+  const sorted = Object.entries(counts).map(([label, count]) => ({ label, count })).sort((a, b) => b.count - a.count)
+  if (sorted.length <= topN) return sorted
+  const top = sorted.slice(0, topN)
+  const rest = sorted.slice(topN).reduce((s, x) => s + x.count, 0)
+  return [...top, { label: "Others", count: rest }]
+}
+
+function paidGroupDaysBuckets(leads) {
+  const counts = {}
+  for (const l of leads) counts[l.daysBucket] = (counts[l.daysBucket] || 0) + 1
+  return PA_DAYS_BUCKET_ORDER.filter(b => counts[b]).map(b => ({ label: b, count: counts[b] }))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PAID APPS — COMPONENTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+const PA_COUNSELLOR_COLORS = {
+  "Jasmeet Kaur":   { color: "#3b82f6", bg: "#eff6ff" },
+  "Komal Pandey":   { color: "#8b5cf6", bg: "#f5f3ff" },
+  "Prerna Kaushik": { color: "#ec4899", bg: "#fdf2f8" },
+}
+
+const PA_ATTR_CONFIGS = [
+  { field: "source",     title: "Source",           icon: "🌐", accent: "#4F46E5" },
+  { field: "medium",     title: "Medium / Channel", icon: "📡", accent: "#0891B2" },
+  { field: "counsellor", title: "Counsellor",       icon: "🧑‍💼", accent: "#059669" },
+  { field: "workStatus", title: "Work Status",      icon: "💼", accent: "#D97706" },
+  { field: "daysBucket", title: "Days to Convert",  icon: "⏱️", accent: "#DC2626" },
+  { field: "city",       title: "City",             icon: "🏙️", accent: "#0891B2" },
+  { field: "state",      title: "State",            icon: "📍", accent: "#475569" },
+  { field: "gradYear",   title: "Graduation Year",  icon: "🎓", accent: "#7C3AED" },
+  { field: "degree",     title: "Degree",           icon: "📜", accent: "#059669" },
+  { field: "college",    title: "College",          icon: "🏛️", accent: "#D97706" },
+  { field: "company",    title: "Company",          icon: "🏢", accent: "#334155" },
+  { field: "role",       title: "Role",             icon: "👤", accent: "#4F46E5" },
+]
+
+function PaidAttrBar({ items, total, accent }) {
+  const max = Math.max(...items.map(d => d.count), 1)
+  return (
+    <div className="flex flex-col gap-2.5">
+      {items.map(({ label, count }) => {
+        const pct    = total ? Math.round(count / total * 100) : 0
+        const barPct = Math.round(count / max * 100)
+        const isOther = label === "Others"
+        return (
+          <div key={label}>
+            <div className="flex justify-between items-center mb-1">
+              <span className={`text-xs flex-1 pr-2 truncate ${isOther ? "text-gray-400 italic" : "text-gray-700 font-medium"}`}>
+                {label}
+              </span>
+              <div className="flex gap-1.5 items-center flex-shrink-0">
+                <span className="text-sm font-bold text-gray-900">{count}</span>
+                <span className="text-xs text-gray-400 w-8 text-right">{pct}%</span>
+              </div>
+            </div>
+            <div className="h-1.5 rounded-full bg-gray-100 overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-300"
+                   style={{ width: `${barPct}%`, background: isOther ? "#CBD5E1" : accent }} />
+            </div>
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+function PaidAppsDrawer({ leads, label, onClose }) {
+  return (
+    <>
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full z-50 bg-white shadow-2xl flex flex-col"
+           style={{ width: "min(1060px, 95vw)" }}
+           onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 flex-shrink-0 flex items-center justify-between"
+             style={{ background: "linear-gradient(135deg, #1E1B4B, #312E81)", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
+          <div>
+            <div className="text-xs font-bold tracking-widest mb-1" style={{ color: "#A5B4FC" }}>
+              PAID APPS · DRILL-DOWN
+            </div>
+            <div className="text-base font-bold text-white">
+              {leads.length} paid app{leads.length !== 1 ? "s" : ""} · {label}
+            </div>
+          </div>
+          <button onClick={onClose}
+                  className="w-9 h-9 rounded-lg flex items-center justify-center text-xl leading-none transition"
+                  style={{ background: "rgba(255,255,255,.15)", color: "#E0E7FF", border: "none", cursor: "pointer" }}>
+            ×
+          </button>
+        </div>
+        <div className="overflow-auto flex-1">
+          <table className="w-full text-xs min-w-[1000px] border-collapse">
+            <thead className="sticky top-0 bg-gray-50 border-b-2 border-gray-200">
+              <tr>
+                {["#", "Name", "Counsellor", "Source", "Medium", "City", "State", "College", "Degree",
+                  "Grad Yr", "Work Status", "Company", "Role", "Paid On", "Days to Convert"].map(h => (
+                  <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 whitespace-nowrap uppercase tracking-wider">
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {leads.map((l, i) => {
+                const wsColors = l.workStatus === "Working Professional"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : l.workStatus === "Fresher"
+                  ? "bg-indigo-50 text-indigo-700"
+                  : "bg-gray-50 text-gray-600"
+                return (
+                  <tr key={i} className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
+                    <td className="px-3 py-2 text-gray-400 font-semibold">{i + 1}</td>
+                    <td className="px-3 py-2 font-semibold text-gray-900 whitespace-nowrap">{l.name || "—"}</td>
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{l.counsellor}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.source}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.medium}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.city}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.state}</td>
+                    <td className="px-3 py-2 text-gray-600 max-w-[160px] truncate" title={l.college}>{l.college}</td>
+                    <td className="px-3 py-2 text-gray-600">{l.degree}</td>
+                    <td className="px-3 py-2 text-gray-600 text-center">{l.gradYear}</td>
+                    <td className="px-3 py-2">
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${wsColors}`}>
+                        {l.workStatus}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate" title={l.company}>{l.company}</td>
+                    <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate" title={l.role}>{l.role}</td>
+                    <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtPaidDate(l.paidOn)}</td>
+                    <td className="px-3 py-2 text-center font-bold whitespace-nowrap"
+                        style={{ color: l.daysToConvert === null ? "#94a3b8" : l.daysToConvert <= 3 ? "#059669" : l.daysToConvert <= 14 ? "#D97706" : "#DC2626" }}>
+                      {l.daysToConvert !== null ? `${l.daysToConvert}d` : "—"}
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
+  )
+}
+
+function PaidAppsPanel({ appRows }) {
+  const [viewMode,   setViewMode]   = useState("weekly")
+  const [weekStart,  setWeekStart]  = useState(() => paidGetDefaultWeekStart())
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  const allPaid = useMemo(() =>
+    (appRows || []).slice(1).map(parsePaidAppRow).filter(Boolean)
+  , [appRows])
+
+  const weekLeads = useMemo(() => {
+    if (viewMode === "overall") return allPaid
+    const start = new Date(weekStart); start.setHours(0, 0, 0, 0)
+    const end   = new Date(weekStart); end.setDate(end.getDate() + 5); end.setHours(23, 59, 59, 999)
+    return allPaid.filter(l => l.paidOn >= start && l.paidOn <= end)
+  }, [allPaid, weekStart, viewMode])
+
+  const total = weekLeads.length
+
+  const weeklyTrend = useMemo(() => {
+    const thisMonday = paidGetWeekMonday(new Date())
+    const weeks = []
+    for (let i = 7; i >= 0; i--) {
+      const start = new Date(thisMonday); start.setDate(start.getDate() - i * 7); start.setHours(0, 0, 0, 0)
+      const end   = new Date(start); end.setDate(end.getDate() + 5); end.setHours(23, 59, 59, 999)
+      const count = allPaid.filter(l => l.paidOn >= start && l.paidOn <= end).length
+      weeks.push({ name: fmtPaidDate(start).slice(0, -5), count })
+    }
+    return weeks
+  }, [allPaid])
+
+  const attrs = useMemo(() => ({
+    source:     paidGroupRank(weekLeads, "source"),
+    medium:     paidGroupRank(weekLeads, "medium"),
+    counsellor: paidGroupRank(weekLeads, "counsellor"),
+    workStatus: paidGroupRank(weekLeads, "workStatus"),
+    city:       paidGroupRank(weekLeads, "city"),
+    state:      paidGroupRank(weekLeads, "state"),
+    gradYear:   paidGroupRank(weekLeads, "gradYear"),
+    degree:     paidGroupRank(weekLeads, "degree"),
+    college:    paidGroupRank(weekLeads, "college"),
+    company:    paidGroupRank(weekLeads, "company"),
+    role:       paidGroupRank(weekLeads, "role"),
+    daysBucket: paidGroupDaysBuckets(weekLeads),
+  }), [weekLeads])
+
+  const counsellorSplit = useMemo(() => {
+    const map = {}
+    for (const l of weekLeads) map[l.counsellor] = (map[l.counsellor] || 0) + 1
+    return Object.entries(map).sort((a, b) => b[1] - a[1])
+  }, [weekLeads])
+
+  const thisMonday = paidGetWeekMonday(new Date())
+  const atPresent  = weekStart >= thisMonday
+  function shiftWeek(n) { const d = new Date(weekStart); d.setDate(d.getDate() + n * 7); setWeekStart(d) }
+
+  const viewLabel = viewMode === "overall" ? "All Time" : fmtPaidWeekLabel(weekStart)
+
+  if ((appRows || []).length === 0) return (
+    <div className="flex items-center justify-center py-24 text-sm text-gray-400">
+      No App Start Dump data loaded yet.
+    </div>
+  )
+
+  return (
+    <div className="p-5 space-y-5">
+
+      {/* View toggle + week nav */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
+          {[["weekly", "📅 Weekly"], ["overall", "🌍 Overall"]].map(([k, l]) => (
+            <button key={k} onClick={() => setViewMode(k)}
+                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
+                      viewMode === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                    }`}>
+              {l}
+            </button>
+          ))}
+        </div>
+
+        {viewMode === "weekly" && (
+          <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2 shadow-sm">
+            <button onClick={() => shiftWeek(-1)}
+                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition text-lg font-bold">
+              ‹
+            </button>
+            <span className="text-sm font-semibold text-gray-800 px-2 whitespace-nowrap">
+              {fmtPaidWeekLabel(weekStart)}
+            </span>
+            <button onClick={() => !atPresent && shiftWeek(1)}
+                    className={`w-7 h-7 flex items-center justify-center rounded-lg transition text-lg font-bold ${
+                      atPresent ? "text-gray-300 cursor-not-allowed" : "hover:bg-gray-100 text-gray-600"
+                    }`}>
+              ›
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Hero card */}
+      <div onClick={() => total > 0 && setDrawerOpen(true)}
+           className="rounded-2xl p-7 flex items-center justify-between transition-all"
+           style={{
+             background: total > 0
+               ? "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)"
+               : "#F8FAFC",
+             border: total > 0 ? "none" : "1px solid #E2E8F0",
+             cursor: total > 0 ? "pointer" : "default",
+             filter: "brightness(1)",
+           }}
+           onMouseEnter={e => total > 0 && (e.currentTarget.style.filter = "brightness(1.06)")}
+           onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}>
+        <div>
+          <div className="text-xs font-bold tracking-widest mb-3"
+               style={{ color: total > 0 ? "#A5B4FC" : "#94A3B8" }}>
+            {viewMode === "overall" ? "ALL TIME · PAID APPS" : "PAID APPS THIS WEEK"}
+          </div>
+          <div className="text-6xl font-extrabold leading-none"
+               style={{ color: total > 0 ? "#FFFFFF" : "#CBD5E1" }}>
+            {total}
+          </div>
+          <div className="text-sm mt-3" style={{ color: total > 0 ? "#C7D2FE" : "#94A3B8" }}>
+            {viewLabel}
+          </div>
+        </div>
+
+        {total > 0 ? (
+          <div className="flex flex-col gap-2.5 items-end">
+            <div className="flex flex-col gap-1.5">
+              {counsellorSplit.slice(0, 3).map(([name, count]) => {
+                const meta = PA_COUNSELLOR_COLORS[name]
+                return (
+                  <div key={name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
+                       style={{ background: "rgba(255,255,255,.15)" }}>
+                    <span className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{ background: meta?.color || "#a5b4fc" }} />
+                    <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,.8)" }}>
+                      {name.split(" ")[0]}
+                    </span>
+                    <span className="text-sm font-bold text-white">{count}</span>
+                  </div>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                 style={{ background: "rgba(255,255,255,.2)", color: "#E0E7FF" }}>
+              📋 View {total} records →
+            </div>
+          </div>
+        ) : (
+          <div className="text-sm text-gray-400">No paid apps in this period</div>
+        )}
+      </div>
+
+      {/* Trend chart — weekly mode only */}
+      {viewMode === "weekly" && (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+          <div className="text-sm font-semibold text-gray-800 mb-4">Weekly Trend (last 8 weeks)</div>
+          <ResponsiveContainer width="100%" height={150}>
+            <BarChart data={weeklyTrend} barCategoryGap="35%">
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} allowDecimals={false} />
+              <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
+              <Bar dataKey="count" name="Paid Apps" fill="#4338CA" radius={[4, 4, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      {/* Attribution grid */}
+      {total > 0 ? (
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(310px, 1fr))" }}>
+          {PA_ATTR_CONFIGS.map(({ field, title, icon, accent }) => {
+            const data = field === "daysBucket" ? attrs.daysBucket : attrs[field]
+            if (!data || data.length === 0) return null
+            return (
+              <div key={field} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="text-sm font-semibold text-gray-800">{icon} {title}</div>
+                  <span className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md px-2 py-0.5">
+                    {total} total
+                  </span>
+                </div>
+                <PaidAttrBar items={data} total={total} accent={accent} />
+              </div>
+            )
+          })}
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-10 text-center">
+          <div className="text-3xl mb-3">💳</div>
+          <div className="text-sm font-semibold text-gray-700 mb-1">No paid apps in this period</div>
+          <div className="text-xs text-gray-400">
+            {viewMode === "weekly" ? "Try navigating to a different week." : "No completed app starts found."}
+          </div>
+          {allPaid.length > 0 && viewMode === "weekly" && (
+            <div className="mt-3 text-xs text-indigo-600 font-medium">
+              {allPaid.length} total paid apps exist — use the week nav to find them.
+            </div>
+          )}
+        </div>
+      )}
+
+      {drawerOpen && (
+        <PaidAppsDrawer leads={weekLeads} label={viewLabel} onClose={() => setDrawerOpen(false)} />
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // OVERVIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -1886,7 +2345,7 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
 // DETAIL VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
-function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initialSubTab = "charts", onBack }) {
+function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initialSubTab = "charts", onBack, appRows }) {
   const [mainTab, setMainTab] = useState("overall")
   const [section, setSection] = useState("all")
   const [source,  setSource]  = useState("all")
@@ -1984,7 +2443,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"]].map(([k,l]) => (
+        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"], ["paid-apps","💰 Paid Apps"]].map(([k,l]) => (
           <button key={k} onClick={() => setSubTab(k)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                     subTab === k
@@ -2025,6 +2484,9 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         {subTab === "ai" && (
           <AIInsightsPanel rows={visibleRows} counsellorName={counsellorNameForAI} dateStr={date} />
         )}
+        {subTab === "paid-apps" && (
+          <PaidAppsPanel appRows={appRows} />
+        )}
       </div>
 
       <DrillDrawer drill={drill} onClose={() => setDrill(null)} />
@@ -2054,6 +2516,7 @@ export default function AdminInsights() {
   }, { replace: true }), [setParams])
 
   const [allRows, setAllRows] = useState([])
+  const [appStartRaw, setAppStartRaw] = useState([])
   const [pipelineRows, setPipelineRows] = useState([])
   const [pipelineChanges, setPipelineChanges] = useState({
     hasBaseline: false,
@@ -2100,6 +2563,7 @@ export default function AdminInsights() {
 
         if (!cancelled) {
           setAllRows(rows)
+          setAppStartRaw(appRaw)
           setPipelineRows(pipeline)
           setPipelineChanges(changes)
         }
@@ -2134,5 +2598,5 @@ export default function AdminInsights() {
         onDrill={() => setParams(p => { const n = new URLSearchParams(p); n.delete('ai_subtab'); n.set('ai_view', 'detail'); return n }, { replace: true })}
         onOpenPipeline={() => setParams(p => { const n = new URLSearchParams(p); n.set('ai_subtab', 'pipeline'); n.set('ai_view', 'detail'); return n }, { replace: true })}
       />
-    : <Detail   date={date} setDate={setDate} allRows={allRows} pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} initialSubTab={detailSubTab} onBack={() => setView("overview")} />
+    : <Detail   date={date} setDate={setDate} allRows={allRows} pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} initialSubTab={detailSubTab} onBack={() => setView("overview")} appRows={appStartRaw} />
 }
