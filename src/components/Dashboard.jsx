@@ -153,7 +153,8 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
       fresh: data.freshLeads,
       followup: data.followupLeads,
       newapp: data.newAppStart,
-      appfollowup: data.appFollowup
+      appfollowup: data.appFollowup,
+      mycounselling: data.myCounselling || [],
     }
     const leads = leadsMap[activeTab] || []
     const emails = leads.map(l => l.email).filter(Boolean).join(', ')
@@ -174,6 +175,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
     if (activeTab === 'followup') return data.followupLeads
     if (activeTab === 'newapp') return data.newAppStart
     if (activeTab === 'appfollowup') return data.appFollowup
+    if (activeTab === 'mycounselling') return data.myCounselling || []
     return []
   }
 
@@ -330,7 +332,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
 
             {/* TAB NAVIGATION */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
-              <div className="grid grid-cols-2 md:grid-cols-4">
+              <div className="grid grid-cols-3 md:grid-cols-5">
                 <TabButton
                   active={activeTab === 'newapp'}
                   onClick={() => setActiveTab('newapp')}
@@ -363,6 +365,14 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
                   count={data.freshLeads.length}
                   color="green"
                 />
+                <TabButton
+                  active={activeTab === 'mycounselling'}
+                  onClick={() => setActiveTab('mycounselling')}
+                  label="🤝 Counselling"
+                  fullLabel="🤝 My Counselling"
+                  count={(data.myCounselling || []).length}
+                  color="teal"
+                />
               </div>
             </div>
 
@@ -390,6 +400,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
               leads={getCurrentLeads()}
               defaultSortKey={activeTab === 'followup' || activeTab === 'appfollowup' ? 'priority' : 'score'}
               defaultSortDir={activeTab === 'followup' || activeTab === 'appfollowup' ? 'asc' : 'desc'}
+              colorByBucket={activeTab === 'mycounselling'}
             />
           </>
         )}
@@ -403,7 +414,8 @@ function TabButton({ active, onClick, label, fullLabel, count, color }) {
     green:  { bg: 'bg-green-50',  text: 'text-green-700',  activeBg: 'bg-green-100',  border: 'border-green-500'  },
     orange: { bg: 'bg-orange-50', text: 'text-orange-700', activeBg: 'bg-orange-100', border: 'border-orange-500' },
     purple: { bg: 'bg-purple-50', text: 'text-purple-700', activeBg: 'bg-purple-100', border: 'border-purple-500' },
-    pink:   { bg: 'bg-pink-50',   text: 'text-pink-700',   activeBg: 'bg-pink-100',   border: 'border-pink-500'   }
+    pink:   { bg: 'bg-pink-50',   text: 'text-pink-700',   activeBg: 'bg-pink-100',   border: 'border-pink-500'   },
+    teal:   { bg: 'bg-teal-50',   text: 'text-teal-700',   activeBg: 'bg-teal-100',   border: 'border-teal-500'   },
   }
   const c = colors[color]
 

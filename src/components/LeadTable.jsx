@@ -25,7 +25,13 @@ function sortValue(lead, key) {
   return lead[key] ?? ''
 }
 
-export default function LeadTable({ leads, defaultSortKey = 'score', defaultSortDir = 'desc' }) {
+const BUCKET_ROW = {
+  hot:  { bg: 'bg-red-50',    border: 'border-l-4 border-red-400'    },
+  warm: { bg: 'bg-amber-50',  border: 'border-l-4 border-amber-400'  },
+  cold: { bg: 'bg-blue-50',   border: 'border-l-4 border-blue-300'   },
+}
+
+export default function LeadTable({ leads, defaultSortKey = 'score', defaultSortDir = 'desc', colorByBucket = false }) {
   const [search, setSearch] = useState('')
   const [sortKey, setSortKey] = useState(defaultSortKey)
   const [sortDir, setSortDir] = useState(defaultSortDir)
@@ -83,7 +89,7 @@ export default function LeadTable({ leads, defaultSortKey = 'score', defaultSort
       {/* Mobile card list */}
       <div className="md:hidden divide-y divide-gray-100">
         {filteredLeads.map((lead, idx) => (
-          <MobileCard key={idx} lead={lead} idx={idx} />
+          <MobileCard key={idx} lead={lead} idx={idx} colorByBucket={colorByBucket} />
         ))}
       </div>
 
@@ -109,8 +115,10 @@ export default function LeadTable({ leads, defaultSortKey = 'score', defaultSort
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {filteredLeads.map((lead, idx) => (
-              <tr key={idx} className="hover:bg-gray-50 transition">
+            {filteredLeads.map((lead, idx) => {
+              const bucketStyle = colorByBucket ? (BUCKET_ROW[lead.bucket] || {}) : {}
+              return (
+              <tr key={idx} className={`transition ${bucketStyle.bg || 'hover:bg-gray-50'} ${bucketStyle.border || ''}`}>
                 <td className="px-3 py-2 text-gray-500">{idx + 1}</td>
                 <td className="px-3 py-2"><CategoryBadge category={lead.category} /></td>
                 <td className="px-3 py-2 font-bold text-blue-700">{lead.score}</td>
@@ -132,7 +140,8 @@ export default function LeadTable({ leads, defaultSortKey = 'score', defaultSort
                 <td className="px-3 py-2 text-gray-500 max-w-[200px] truncate" title={lead.notes}>{lead.notes}</td>
                 <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{lead.counsellor}</td>
               </tr>
-            ))}
+              )
+            })}
           </tbody>
         </table>
       </div>
@@ -140,11 +149,12 @@ export default function LeadTable({ leads, defaultSortKey = 'score', defaultSort
   )
 }
 
-function MobileCard({ lead, idx }) {
+function MobileCard({ lead, idx, colorByBucket }) {
   const [expanded, setExpanded] = useState(false)
+  const bucketStyle = colorByBucket ? (BUCKET_ROW[lead.bucket] || {}) : {}
 
   return (
-    <div className="p-4">
+    <div className={`p-4 ${bucketStyle.bg || ''} ${bucketStyle.border || ''}`}>
       {/* Top row: number + category + score + priority */}
       <div className="flex items-start justify-between mb-2">
         <div className="flex items-center gap-2 flex-wrap">
@@ -200,10 +210,12 @@ function MobileCard({ lead, idx }) {
 
 function CategoryBadge({ category }) {
   const styles = {
-    'Fresh Lead':    'bg-green-100 text-green-700',
-    'Followup Lead': 'bg-orange-100 text-orange-700',
-    'New App Start': 'bg-purple-100 text-purple-700',
-    'App Followup':  'bg-pink-100 text-pink-700'
+    'Fresh Lead':        'bg-green-100 text-green-700',
+    'Followup Lead':     'bg-orange-100 text-orange-700',
+    'New App Start':     'bg-purple-100 text-purple-700',
+    'App Followup':      'bg-pink-100 text-pink-700',
+    'App Counselling':   'bg-indigo-100 text-indigo-700',
+    'Lead Counselling':  'bg-teal-100 text-teal-700',
   }
   return (
     <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${styles[category] || 'bg-gray-100 text-gray-700'}`}>

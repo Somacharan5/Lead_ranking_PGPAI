@@ -449,6 +449,80 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
 }
 
 // ============================================================================
+// SECTION 5: My Counselling — all Counseled records for this counsellor
+//   App Start rows first (AU = "Counseled", not Completed)
+//   Lead rows after   (BD = "Counseled", not Completed)
+//   Each group sorted by score desc, preserving table order within group.
+// ============================================================================
+export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName) {
+  // App Start counsellings
+  const appRows = appStartDumpRows.slice(1)
+    .filter(row => {
+      const counsellor    = (getCol(row, 'AR') || '').trim()
+      const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
+      const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
+      return counsellor === counsellorName && appStage === 'counseled' && paymentStatus !== 'completed'
+    })
+    .map(row => ({
+      name:                   getCol(row, 'M'),
+      email:                  getCol(row, 'N'),
+      mobile:                 getCol(row, 'O'),
+      source:                 getCol(row, 'S'),
+      registeredOn:           getCol(row, 'Q'),
+      medium:                 getCol(row, 'T'),
+      counsellorLastActivity: getCol(row, 'BG'),
+      campaign:               getCol(row, 'U'),
+      blackoutCampaign:       getCol(row, 'W'),
+      stage:                  getCol(row, 'AU'),
+      subStage:               getCol(row, 'AV'),
+      notes:                  getCol(row, 'BM'),
+      score:                  parseFloat(getCol(row, 'ET')) || 0,
+      counsellor:             getCol(row, 'AR'),
+      priority:               getCol(row, 'EU'),
+      category:               'App Counselling',
+      bucket:                 (getCol(row, 'AV') || '').toLowerCase().trim(),
+    }))
+    .sort((a, b) => b.score - a.score)
+
+  // Lead counsellings
+  const leadRows = leadDumpRows.slice(1)
+    .filter(row => {
+      const counsellor    = (getCol(row, 'BC') || '').trim()
+      const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
+      const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
+      const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
+      return (
+        counsellor === counsellorName &&
+        userType === 'lead' &&
+        leadStage === 'counseled' &&
+        paymentStatus !== 'completed'
+      )
+    })
+    .map(row => ({
+      name:                   getCol(row, 'A'),
+      email:                  getCol(row, 'B'),
+      mobile:                 getCol(row, 'C'),
+      source:                 getCol(row, 'G'),
+      registeredOn:           getCol(row, 'BA'),
+      medium:                 getCol(row, 'H'),
+      counsellorLastActivity: getCol(row, 'BK'),
+      campaign:               getCol(row, 'I'),
+      blackoutCampaign:       getCol(row, 'H'),
+      stage:                  getCol(row, 'BD'),
+      subStage:               getCol(row, 'BE'),
+      notes:                  getCol(row, 'BP'),
+      score:                  parseFloat(getCol(row, 'CF')) || 0,
+      counsellor:             getCol(row, 'BC'),
+      priority:               getCol(row, 'CG'),
+      category:               'Lead Counselling',
+      bucket:                 (getCol(row, 'BE') || '').toLowerCase().trim(),
+    }))
+    .sort((a, b) => b.score - a.score)
+
+  return [...appRows, ...leadRows]
+}
+
+// ============================================================================
 // SORTING & ALLOCATION
 // ============================================================================
 
@@ -512,20 +586,18 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
 // ============================================================================
 export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, appStartDump, blackoutsRaw] = await Promise.all([
-    fetchSheetData('Lead Dump',          'A:CG'),  // up to CG (Priority col)
-    fetchSheetData('App Start Dump',     'A:EU'),  // unchanged
+    fetchSheetData('Lead Dump',          'A:CG'),
+    fetchSheetData('App Start Dump',     'A:EU'),
     fetchSheetData('Campaign Blackouts', 'A:D').catch(() => []),
   ])
 
   const blackouts     = parseBlackouts(blackoutsRaw)
   const applyBlackout = leads => leads.filter(l => !isBlackedOut(l, blackouts))
 
-  // Both fresh + followup read from the same leadDump rows
-  const fresh   = getFreshLeads(leadDump,      counsellorName)
+  const fresh    = getFreshLeads(leadDump,      counsellorName)
   const followup = getFollowupLeads(leadDump,   counsellorName)
-  // Both new + followup app starts read from the same appStartDump rows
-  const newApp  = getNewAppStart(appStartDump, counsellorName)
-  const appFu   = getAppFollowup(appStartDump, counsellorName)
+  const newApp   = getNewAppStart(appStartDump, counsellorName)
+  const appFu    = getAppFollowup(appStartDump, counsellorName)
 
   const allocation = allocateLeads(
     applyBlackout(fresh.leads),
@@ -547,5 +619,7 @@ export async function getLeadsForCounsellor(counsellorName) {
       appFu.spokenTodayCount,
   }
 
-  return { ...allocation, spokenToday }
+  const myCounselling = getMyCounselling(leadDump, appStartDump, counsellorName)
+
+  return { ...allocation, spokenToday, myCounselling }
 }
