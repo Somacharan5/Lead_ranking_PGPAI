@@ -117,7 +117,10 @@ function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
 function phone10(v) { return String(v || "").replace(/\D/g, "").slice(-10) }
 function cellText(v) { return v === null || v === undefined ? "" : String(v).trim() }
 function parseDurationMins(v) {
-  const s = String(v || "").trim()
+  if (v === null || v === undefined || v === "") return 0
+  const n = Number(v)
+  if (!isNaN(n)) return n  // already a float (col V: "Call Duration in Mins")
+  const s = String(v).trim()
   const m = s.match(/(?:(\d+)h\s*)?(?:(\d+)m\s*)?(?:(\d+)s)?/)
   if (!m || !s) return 0
   return (parseInt(m[1] || 0) * 60) + parseInt(m[2] || 0) + (parseInt(m[3] || 0) / 60)
@@ -339,7 +342,7 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
       stageType:    stageTypeMap[p]  || cellText(row[15]),
       source:       sourceMap[p]     || cellText(row[19]),
       leadStage:    leadStageMap[p]  || cellText(row[20]),
-      durationMins: parseDurationMins(row[9]),
+      durationMins: parseDurationMins(row[21] ?? row[9]),
       subStage:     subStageMap[p] || "",
     }
   })
@@ -2614,7 +2617,10 @@ export default function AdminInsights() {
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const [callsRaw, leadRaw] = await Promise.all([
-          fetchSheetData('Call history', 'A:AZ'),
+          // FORMATTED_VALUE: Call history sheet is formula-driven; UNFORMATTED_VALUE
+          // returns #ERROR! from the array formula in A1, while FORMATTED_VALUE returns
+          // the actual displayed cell values (dates as "13 May 2026", duration as "0h 0m 12s")
+          fetchSheetData('Call history', 'A:V', 'FORMATTED_VALUE'),
           fetchSheetData('Lead Dump',    'A:CG'),
         ])
         const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {

@@ -4,16 +4,11 @@ const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY
 
 const BASE_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values`
 
-export async function fetchSheetData(sheetName, range = 'A:BZ') {
+export async function fetchSheetData(sheetName, range = 'A:BZ', valueRenderOption = 'UNFORMATTED_VALUE') {
   try {
     const encodedSheetName = encodeURIComponent(sheetName)
-    // FIX: UNFORMATTED_VALUE returns dates as Excel serial numbers (e.g. 46152.79)
-    // instead of locale-formatted strings (e.g. "5/10/2026" in US format).
-    // The parseDate() function already handles serial numbers correctly.
-    // Without this, dates formatted as M/D/YYYY get parsed as DD/MM/YYYY,
-    // pushing them months/years into the future → leads silently disappear.
     const url = `${BASE_URL}/${encodedSheetName}!${range}?key=${API_KEY}`
-              + `&valueRenderOption=UNFORMATTED_VALUE`
+              + `&valueRenderOption=${valueRenderOption}`
               + `&dateTimeRenderOption=SERIAL_NUMBER`
     const response = await fetch(url)
 
