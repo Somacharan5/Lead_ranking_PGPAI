@@ -2142,6 +2142,17 @@ function PaidAppsPanel({ appRows }) {
 
   const viewLabel = viewMode === "overall" ? "All Time" : fmtPaidWeekLabel(weekStart)
 
+  // Diagnostic: count status values from raw rows (excluding header)
+  const diagStatusCounts = useMemo(() => {
+    const rows = (appRows || []).slice(1)
+    const counts = {}
+    for (const r of rows) {
+      const v = (r[2] === null || r[2] === undefined ? "" : String(r[2])).trim() || "(empty)"
+      counts[v] = (counts[v] || 0) + 1
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
+  }, [appRows])
+
   if ((appRows || []).length === 0) return (
     <div className="flex flex-col items-center justify-center py-24 gap-2 text-sm text-gray-400">
       <div className="text-2xl">📋</div>
@@ -2309,6 +2320,24 @@ function PaidAppsPanel({ appRows }) {
           accent={drillAttr.accent}
           onClose={() => setDrillAttr(null)}
         />
+      )}
+
+      {/* Diagnostic — shows payment status distribution so we can confirm the right column is being read */}
+      {allPaid.length === 0 && (appRows || []).length > 1 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs">
+          <div className="font-semibold text-amber-800 mb-2">
+            Diagnostic — {(appRows || []).length - 1} rows fetched, 0 passed filter
+          </div>
+          <div className="text-amber-700 mb-1">Payment Status values found in column C (index 2):</div>
+          <div className="flex flex-wrap gap-2">
+            {diagStatusCounts.map(([v, n]) => (
+              <span key={v} className="bg-white border border-amber-300 rounded px-2 py-0.5 font-mono text-amber-900">
+                "{v}" × {n}
+              </span>
+            ))}
+          </div>
+          <div className="text-amber-600 mt-2">Filter expects: "Completed" (case-insensitive). If no match, share the exact value above.</div>
+        </div>
       )}
     </div>
   )
