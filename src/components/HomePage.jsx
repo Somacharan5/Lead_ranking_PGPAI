@@ -36,13 +36,6 @@ export default function HomePage() {
             </div>
           </Link>
           
-          <Link to="/rahul" className="block p-4 bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 rounded-lg transition">
-            <div className="flex items-center justify-between">
-              <span className="font-semibold text-rose-700">👤 Rahul</span>
-              <span className="text-xs text-rose-500">/rahul →</span>
-            </div>
-          </Link>
-
           <Link to="/sanjana" className="block p-4 bg-teal-50 hover:bg-teal-100 border-2 border-teal-200 rounded-lg transition">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-teal-700">👤 Sanjana</span>
