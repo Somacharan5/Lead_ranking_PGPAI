@@ -2616,13 +2616,15 @@ export default function AdminInsights() {
       setLoading(true); setError(""); setDiag(null)
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
-        const [callsRaw, leadRaw] = await Promise.all([
-          // FORMATTED_VALUE: Call history sheet is formula-driven; UNFORMATTED_VALUE
-          // returns #ERROR! from the array formula in A1, while FORMATTED_VALUE returns
-          // the actual displayed cell values (dates as "13 May 2026", duration as "0h 0m 12s")
-          fetchSheetData('Call history', 'A:V', 'FORMATTED_VALUE'),
+        const [callsDataRaw, leadRaw] = await Promise.all([
+          // Row 1 has a broken formula (#ERROR!) — skip it and start from A2.
+          // We prepend a synthetic header row matching the known column layout.
+          fetchSheetData('Call history', 'A2:V10000', 'FORMATTED_VALUE'),
           fetchSheetData('Lead Dump',    'A:CG'),
         ])
+        // Prepend synthetic header so parseCallsHistory's slice(1) works correctly
+        const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Name2","To Name","Country Code","To Number","Call Type","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
+        const callsRaw = [CALLS_HEADER, ...callsDataRaw]
         const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
