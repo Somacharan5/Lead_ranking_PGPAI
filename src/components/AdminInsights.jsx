@@ -1848,9 +1848,8 @@ function parsePaidAppRow(row) {
   const status = (row[2] || "").trim().toLowerCase()
   if (status !== "completed") return null
   const registeredOn = paidSerialToDate(row[16])
-  // BH (59) is the payment completion date; fall back to registeredOn if missing
-  const paidOn = paidSerialToDate(row[59]) || paidSerialToDate(row[58]) || registeredOn
-  if (!paidOn) return null
+  // Try multiple candidate columns for payment/activity date; null = no date available (row still included)
+  const paidOn = paidSerialToDate(row[59]) || paidSerialToDate(row[58]) || paidSerialToDate(row[57]) || registeredOn || null
   const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
   const gradYear = parseInt(row[86]) || null
   return {
@@ -2098,7 +2097,7 @@ function PaidAppsPanel({ appRows }) {
     if (viewMode === "overall") return allPaid
     const start = new Date(weekStart); start.setHours(0, 0, 0, 0)
     const end   = new Date(weekStart); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
-    return allPaid.filter(l => l.paidOn >= start && l.paidOn <= end)
+    return allPaid.filter(l => l.paidOn && l.paidOn >= start && l.paidOn <= end)
   }, [allPaid, weekStart, viewMode])
 
   const total = weekLeads.length
@@ -2109,7 +2108,7 @@ function PaidAppsPanel({ appRows }) {
     for (let i = 7; i >= 0; i--) {
       const start = new Date(thisMonday); start.setDate(start.getDate() - i * 7); start.setHours(0, 0, 0, 0)
       const end   = new Date(start); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
-      const count = allPaid.filter(l => l.paidOn >= start && l.paidOn <= end).length
+      const count = allPaid.filter(l => l.paidOn && l.paidOn >= start && l.paidOn <= end).length
       weeks.push({ name: fmtPaidDate(start).slice(0, -5), count })
     }
     return weeks
@@ -2141,17 +2140,6 @@ function PaidAppsPanel({ appRows }) {
   function shiftWeek(n) { const d = new Date(weekStart); d.setDate(d.getDate() + n * 7); setWeekStart(d) }
 
   const viewLabel = viewMode === "overall" ? "All Time" : fmtPaidWeekLabel(weekStart)
-
-  // Diagnostic: count status values from raw rows (excluding header)
-  const diagStatusCounts = useMemo(() => {
-    const rows = (appRows || []).slice(1)
-    const counts = {}
-    for (const r of rows) {
-      const v = (r[2] === null || r[2] === undefined ? "" : String(r[2])).trim() || "(empty)"
-      counts[v] = (counts[v] || 0) + 1
-    }
-    return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 8)
-  }, [appRows])
 
   if ((appRows || []).length === 0) return (
     <div className="flex flex-col items-center justify-center py-24 gap-2 text-sm text-gray-400">
@@ -2322,23 +2310,6 @@ function PaidAppsPanel({ appRows }) {
         />
       )}
 
-      {/* Diagnostic — shows payment status distribution so we can confirm the right column is being read */}
-      {allPaid.length === 0 && (appRows || []).length > 1 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-xs">
-          <div className="font-semibold text-amber-800 mb-2">
-            Diagnostic — {(appRows || []).length - 1} rows fetched, 0 passed filter
-          </div>
-          <div className="text-amber-700 mb-1">Payment Status values found in column C (index 2):</div>
-          <div className="flex flex-wrap gap-2">
-            {diagStatusCounts.map(([v, n]) => (
-              <span key={v} className="bg-white border border-amber-300 rounded px-2 py-0.5 font-mono text-amber-900">
-                "{v}" × {n}
-              </span>
-            ))}
-          </div>
-          <div className="text-amber-600 mt-2">Filter expects: "Completed" (case-insensitive). If no match, share the exact value above.</div>
-        </div>
-      )}
     </div>
   )
 }
