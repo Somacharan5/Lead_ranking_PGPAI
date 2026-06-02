@@ -2614,14 +2614,14 @@ export default function AdminInsights() {
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const [callsRaw, leadRaw] = await Promise.all([
-          fetchSheetData('Calls History', 'A:V'),
+          fetchSheetData('Call history', 'A:AZ'),
           fetchSheetData('Lead Dump',    'A:CG'),
         ])
         const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })
-        if (callsRaw.length === 0) throw new Error("Calls History sheet returned no data — check the sheet name, sharing settings, and API key.")
+        if (callsRaw.length === 0) throw new Error("Call history sheet returned no data — check the sheet name, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
@@ -2635,9 +2635,10 @@ export default function AdminInsights() {
         // Collect diagnostic info
         const empCounts = {}
         callsRaw.slice(1).forEach(r => {
-          const n = normalizeName(r[3]) || `"${String(r[3] || '').slice(0, 20)}"`
+          const n = normalizeName(r[3]) || `raw:"${String(r[3] || '').slice(0, 20)}"`
           empCounts[n] = (empCounts[n] || 0) + 1
         })
+        const headerRow  = callsRaw[0] || []
         const sampleCall = callsRaw[1] || []
 
         if (!cancelled) {
@@ -2652,7 +2653,9 @@ export default function AdminInsights() {
             callsForDate: rows.length,
             filterDate: date,
             empCounts,
-            sampleCall: { col3: sampleCall[3], col7: sampleCall[7], col8: sampleCall[8], col10: sampleCall[10], col21: sampleCall[21], len: sampleCall.length },
+            headerRow: headerRow.slice(0, 25),
+            sampleCall: sampleCall.slice(0, 25),
+            sampleLen: sampleCall.length,
           })
         }
       } catch (e) {
@@ -2677,7 +2680,7 @@ export default function AdminInsights() {
       <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700 font-semibold">❌ {error}</div>
       <div className="bg-slate-800 text-slate-100 rounded-xl p-4 text-xs font-mono">
         <div className="font-bold mb-1 text-slate-300">Diagnostic — fetch failed</div>
-        <div>Tried sheet: <b>"Calls History"</b> range A:V</div>
+        <div>Tried sheet: <b>"Call history"</b> range A:AZ</div>
         <div>Date being loaded: <b>{date}</b></div>
         <div className="text-red-300 mt-1">If the sheet name is wrong, share the exact tab name from your Google Sheet.</div>
       </div>
@@ -2697,7 +2700,12 @@ export default function AdminInsights() {
               <span key={n} className="ml-2 bg-slate-700 rounded px-1">"{n}" ×{c}</span>
             )}
           </div>
-          <div className="mt-1 text-slate-400">Sample row[1] — col[3]:{String(diag.sampleCall.col3||'')} | col[7]:{String(diag.sampleCall.col7||'')} | col[8]:{String(diag.sampleCall.col8||'')} | col[10]:{String(diag.sampleCall.col10||'')} | col[21]:{String(diag.sampleCall.col21||'')} | rowLen:{diag.sampleCall.len}</div>
+          <div className="mt-1">Header row (first 25 cols):
+            {diag.headerRow.map((h, i) => <span key={i} className="ml-1 bg-slate-700 rounded px-1">[{i}]{String(h||'').slice(0,18)}</span>)}
+          </div>
+          <div className="mt-1 text-slate-400">Sample data row (first 25 cols, rowLen:{diag.sampleLen}):
+            {diag.sampleCall.map((v, i) => <span key={i} className="ml-1 bg-slate-900 rounded px-1">[{i}]{String(v||'').slice(0,12)}</span>)}
+          </div>
         </div>
       )}
       {view === "overview"
