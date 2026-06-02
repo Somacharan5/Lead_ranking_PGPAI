@@ -2089,6 +2089,28 @@ function PaidAppsPanel({ appRows }) {
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drillAttr,  setDrillAttr]  = useState(null)
 
+  // Deep diagnostic: capture what happens to completed rows
+  const diagInfo = useMemo(() => {
+    const dataRows = (appRows || []).slice(1)
+    const totalRows = dataRows.length
+    const completedRows = dataRows.filter(r => (r[2] === null || r[2] === undefined ? "" : String(r[2])).trim().toLowerCase() === "completed")
+    const errors = []
+    const parsed = completedRows.map(row => {
+      try { return parsePaidAppRow(row) }
+      catch (e) { errors.push(String(e)); return null }
+    }).filter(Boolean)
+    // Sample first 3 completed rows — show key columns
+    const samples = completedRows.slice(0, 3).map(r => ({
+      col2:  r[2],   // Payment Status
+      col12: r[12],  // Name
+      col16: r[16],  // Registered On
+      col58: r[58],  // BG
+      col59: r[59],  // BH
+      rowLen: r.length,
+    }))
+    return { totalRows, completedCount: completedRows.length, parsedCount: parsed.length, errors: errors.slice(0, 3), samples }
+  }, [appRows])
+
   const allPaid = useMemo(() =>
     (appRows || []).slice(1).map(row => { try { return parsePaidAppRow(row) } catch { return null } }).filter(Boolean)
   , [appRows])
@@ -2154,6 +2176,27 @@ function PaidAppsPanel({ appRows }) {
 
   return (
     <div className="p-5 space-y-5">
+
+      {/* Deep diagnostic — always visible until we confirm data is flowing */}
+      <div className="bg-slate-800 text-slate-100 rounded-xl p-4 text-xs font-mono space-y-2">
+        <div className="font-bold text-slate-300 text-sm mb-1">🔍 Diagnostic</div>
+        <div>appRows total: <b>{(appRows||[]).length}</b> (incl. header) → data rows: <b>{diagInfo.totalRows}</b></div>
+        <div>Payment Status = "completed": <b>{diagInfo.completedCount}</b></div>
+        <div>After parsePaidAppRow: <b>{diagInfo.parsedCount}</b> → allPaid: <b>{allPaid.length}</b></div>
+        {diagInfo.errors.length > 0 && (
+          <div className="text-red-300">Errors: {diagInfo.errors.join(" | ")}</div>
+        )}
+        {diagInfo.samples.map((s, i) => (
+          <div key={i} className="bg-slate-700 rounded p-2 space-y-0.5">
+            <div className="text-slate-400">--- completed row {i+1} (row length: {s.rowLen}) ---</div>
+            <div>col[2] Payment Status: <b className="text-green-300">"{String(s.col2)}"</b></div>
+            <div>col[12] Name: <b>"{String(s.col12 ?? "(undefined)")}"</b></div>
+            <div>col[16] Registered On (Q): <b className="text-yellow-300">"{String(s.col16 ?? "(undefined)")}"</b></div>
+            <div>col[58] BG: <b>"{String(s.col58 ?? "(undefined)")}"</b></div>
+            <div>col[59] BH: <b>"{String(s.col59 ?? "(undefined)")}"</b></div>
+          </div>
+        ))}
+      </div>
 
       {/* View toggle + week nav */}
       <div className="flex items-center justify-between flex-wrap gap-3">
