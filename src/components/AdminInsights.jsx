@@ -2085,7 +2085,7 @@ function PaidAppsDrawer({ leads, label, onClose }) {
 }
 
 function PaidAppsPanel({ appRows }) {
-  const [viewMode,   setViewMode]   = useState("weekly")
+  const [viewMode,   setViewMode]   = useState("overall")
   const [weekStart,  setWeekStart]  = useState(() => paidGetDefaultWeekStart())
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drillAttr,  setDrillAttr]  = useState(null)
