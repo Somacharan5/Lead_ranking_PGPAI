@@ -2614,14 +2614,14 @@ export default function AdminInsights() {
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const [callsRaw, leadRaw] = await Promise.all([
-          fetchSheetData('Call history', 'A:V'),
+          fetchSheetData('Calls History', 'A:V'),
           fetchSheetData('Lead Dump',    'A:CG'),
         ])
         const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })
-        if (callsRaw.length === 0) throw new Error("Call history sheet returned no data — check the sheet name, sharing settings, and API key.")
+        if (callsRaw.length === 0) throw new Error("Calls History sheet returned no data — check the sheet name, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
@@ -2677,7 +2677,7 @@ export default function AdminInsights() {
       <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700 font-semibold">❌ {error}</div>
       <div className="bg-slate-800 text-slate-100 rounded-xl p-4 text-xs font-mono">
         <div className="font-bold mb-1 text-slate-300">Diagnostic — fetch failed</div>
-        <div>Tried sheet: <b>"Call history"</b> range A:V</div>
+        <div>Tried sheet: <b>"Calls History"</b> range A:V</div>
         <div>Date being loaded: <b>{date}</b></div>
         <div className="text-red-300 mt-1">If the sheet name is wrong, share the exact tab name from your Google Sheet.</div>
       </div>
