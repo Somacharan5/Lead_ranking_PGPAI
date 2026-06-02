@@ -1848,7 +1848,8 @@ function parsePaidAppRow(row) {
   const status = (row[2] || "").trim().toLowerCase()
   if (status !== "completed") return null
   const registeredOn = paidSerialToDate(row[16])
-  const paidOn       = paidSerialToDate(row[59])
+  // BH (59) is the payment completion date; fall back to registeredOn if missing
+  const paidOn = paidSerialToDate(row[59]) || paidSerialToDate(row[58]) || registeredOn
   if (!paidOn) return null
   const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
   const gradYear = parseInt(row[86]) || null
@@ -2090,7 +2091,7 @@ function PaidAppsPanel({ appRows }) {
   const [drillAttr,  setDrillAttr]  = useState(null)
 
   const allPaid = useMemo(() =>
-    (appRows || []).slice(1).map(parsePaidAppRow).filter(Boolean)
+    (appRows || []).slice(1).map(row => { try { return parsePaidAppRow(row) } catch { return null } }).filter(Boolean)
   , [appRows])
 
   const weekLeads = useMemo(() => {
@@ -2142,8 +2143,13 @@ function PaidAppsPanel({ appRows }) {
   const viewLabel = viewMode === "overall" ? "All Time" : fmtPaidWeekLabel(weekStart)
 
   if ((appRows || []).length === 0) return (
-    <div className="flex items-center justify-center py-24 text-sm text-gray-400">
-      No App Start Dump data loaded yet.
+    <div className="flex flex-col items-center justify-center py-24 gap-2 text-sm text-gray-400">
+      <div className="text-2xl">📋</div>
+      <div className="font-semibold text-gray-600">App Start Dump not loaded</div>
+      <div className="text-xs text-center max-w-xs">
+        The sheet named <span className="font-mono bg-gray-100 px-1 rounded">App Start Dump</span> could not be fetched.
+        Check the sheet name and sharing settings.
+      </div>
     </div>
   )
 
@@ -2610,11 +2616,15 @@ export default function AdminInsights() {
       setLoading(true); setError("")
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
-        const [callsRaw, leadRaw, appRaw] = await Promise.all([
-          fetchSheetData('Call history',  'A:V'),
-          fetchSheetData('Lead Dump',     'A:CG'),
-          fetchSheetData('App Start Dump','A:EU'),
+        const [callsRaw, leadRaw] = await Promise.all([
+          fetchSheetData('Call history', 'A:V'),
+          fetchSheetData('Lead Dump',    'A:CG'),
         ])
+        // App Start Dump is non-critical — Paid Apps panel degrades gracefully if it fails
+        const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {
+          console.warn('App Start Dump fetch failed:', e.message)
+          return []
+        })
         if (callsRaw.length === 0) throw new Error("Call history sheet returned no data — check the sheet name, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
