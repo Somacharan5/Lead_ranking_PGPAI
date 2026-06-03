@@ -2608,12 +2608,11 @@ export default function AdminInsights() {
   })
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState("")
-  const [diag,    setDiag]    = useState(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError(""); setDiag(null)
+      setLoading(true); setError("")
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const [callsDataRaw, leadRaw] = await Promise.all([
@@ -2640,31 +2639,11 @@ export default function AdminInsights() {
         const changes = comparePipelineSnapshots(previous?.rows, activePipeline)
         try { localStorage.setItem(snapshotKey, JSON.stringify({ savedAt: new Date().toISOString(), rows: snapshotPipeline(activePipeline) })) } catch {}
 
-        // Collect diagnostic info
-        const empCounts = {}
-        callsRaw.slice(1).forEach(r => {
-          const n = normalizeName(r[3]) || `raw:"${String(r[3] || '').slice(0, 20)}"`
-          empCounts[n] = (empCounts[n] || 0) + 1
-        })
-        const headerRow  = callsRaw[0] || []
-        const sampleCall = callsRaw[1] || []
-
         if (!cancelled) {
           setAllRows(rows)
           setAppStartRaw(appRaw)
           setPipelineRows(pipeline)
           setPipelineChanges(changes)
-          setDiag({
-            callsTotal: callsRaw.length - 1,
-            leadTotal:  leadRaw.length  - 1,
-            appTotal:   appRaw.length   - 1,
-            callsForDate: rows.length,
-            filterDate: date,
-            empCounts,
-            headerRow: headerRow.slice(0, 25),
-            sampleCall: sampleCall.slice(0, 25),
-            sampleLen: sampleCall.length,
-          })
         }
       } catch (e) {
         if (!cancelled) setError(e.message)
@@ -2684,38 +2663,11 @@ export default function AdminInsights() {
   )
 
   if (error) return (
-    <div className="m-5 space-y-3">
-      <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700 font-semibold">❌ {error}</div>
-      <div className="bg-slate-800 text-slate-100 rounded-xl p-4 text-xs font-mono">
-        <div className="font-bold mb-1 text-slate-300">Diagnostic — fetch failed</div>
-        <div>Tried sheet: <b>"Call history"</b> range A:AZ</div>
-        <div>Date being loaded: <b>{date}</b></div>
-        <div className="text-red-300 mt-1">If the sheet name is wrong, share the exact tab name from your Google Sheet.</div>
-      </div>
-    </div>
+    <div className="m-5 bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">❌ {error}</div>
   )
 
   return (
     <>
-      {diag && (
-        <div className="m-4 bg-slate-800 text-slate-100 rounded-xl p-4 text-xs font-mono space-y-1">
-          <div className="font-bold text-slate-300 text-sm mb-2">🔍 Admin Insights Diagnostic</div>
-          <div>Call history rows: <b className={diag.callsTotal === 0 ? "text-red-300" : "text-green-300"}>{diag.callsTotal}</b></div>
-          <div>Lead Dump rows: <b>{diag.leadTotal}</b> &nbsp;|&nbsp; App Start Dump rows: <b>{diag.appTotal}</b></div>
-          <div>Filtering for date: <b className="text-yellow-300">{diag.filterDate}</b> → calls found: <b className={diag.callsForDate === 0 ? "text-red-300" : "text-green-300"}>{diag.callsForDate}</b></div>
-          <div className="mt-1">Employee name breakdown (all dates):
-            {Object.entries(diag.empCounts).sort((a,b)=>b[1]-a[1]).slice(0,8).map(([n,c]) =>
-              <span key={n} className="ml-2 bg-slate-700 rounded px-1">"{n}" ×{c}</span>
-            )}
-          </div>
-          <div className="mt-1">Header row (first 25 cols):
-            {diag.headerRow.map((h, i) => <span key={i} className="ml-1 bg-slate-700 rounded px-1">[{i}]{String(h||'').slice(0,18)}</span>)}
-          </div>
-          <div className="mt-1 text-slate-400">Sample data row (first 25 cols, rowLen:{diag.sampleLen}):
-            {diag.sampleCall.map((v, i) => <span key={i} className="ml-1 bg-slate-900 rounded px-1">[{i}]{String(v||'').slice(0,12)}</span>)}
-          </div>
-        </div>
-      )}
       {view === "overview"
         ? <Overview
             date={date}
