@@ -456,35 +456,44 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
 // ============================================================================
 export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName) {
   // App Start counsellings
+  // Bug 4 fix: include rows where either AU (Application Stage) OR AT (Lead Stage) = "Counseled"
   const appRows = appStartDumpRows.slice(1)
     .filter(row => {
       const counsellor    = (getCol(row, 'AR') || '').trim()
       const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
+      const leadStageAT   = (getCol(row, 'AT') || '').toLowerCase().trim()
       const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
-      return counsellor === counsellorName && appStage === 'counseled' && paymentStatus !== 'completed'
+      return (
+        counsellor === counsellorName &&
+        (appStage === 'counseled' || leadStageAT === 'counseled') &&
+        paymentStatus !== 'completed'
+      )
     })
-    .map(row => ({
-      name:                   getCol(row, 'M'),
-      email:                  getCol(row, 'N'),
-      mobile:                 getCol(row, 'O'),
-      source:                 getCol(row, 'S'),
-      registeredOn:           getCol(row, 'Q'),
-      medium:                 getCol(row, 'T'),
-      counsellorLastActivity: getCol(row, 'BG'),
-      campaign:               getCol(row, 'U'),
-      blackoutCampaign:       getCol(row, 'W'),
-      stage:                  getCol(row, 'AU'),
-      subStage:               getCol(row, 'AV'),
-      notes:                  getCol(row, 'BM'),
-      score:                  parseFloat(getCol(row, 'ET')) || 0,
-      counsellor:             getCol(row, 'AR'),
-      priority:               getCol(row, 'EU'),
-      category:               'App Counselling',
-      bucket:                 (getCol(row, 'AV') || '').toLowerCase().trim(),
-    }))
+    .map(row => {
+      const appStage = (getCol(row, 'AU') || '').toLowerCase().trim()
+      return {
+        name:                   getCol(row, 'M'),
+        email:                  getCol(row, 'N'),
+        mobile:                 getCol(row, 'O'),
+        source:                 getCol(row, 'S'),
+        registeredOn:           getCol(row, 'Q'),
+        medium:                 getCol(row, 'T'),
+        counsellorLastActivity: getCol(row, 'BG'),
+        campaign:               getCol(row, 'U'),
+        blackoutCampaign:       getCol(row, 'W'),
+        stage:                  appStage === 'counseled' ? getCol(row, 'AU') : getCol(row, 'AT'),
+        subStage:               getCol(row, 'AV'),
+        notes:                  getCol(row, 'BM'),
+        score:                  parseFloat(getCol(row, 'ET')) || 0,
+        counsellor:             getCol(row, 'AR'),
+        priority:               getCol(row, 'EU'),
+        category:               'App Counselling',
+        bucket:                 (getCol(row, 'AV') || '').toLowerCase().trim(),
+      }
+    })
     .sort((a, b) => b.score - a.score)
 
-  // Lead counsellings
+  // Lead counsellings (AG="lead" filter already present — Bug 2 already correct)
   const leadRows = leadDumpRows.slice(1)
     .filter(row => {
       const counsellor    = (getCol(row, 'BC') || '').trim()
@@ -519,7 +528,16 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
     }))
     .sort((a, b) => b.score - a.score)
 
-  return [...appRows, ...leadRows]
+  // Bug 1 fix: cross-type dedup by phone/email — App Start wins over Lead for same person
+  const seen = new Set()
+  return [...appRows, ...leadRows].filter(row => {
+    const phone = String(row.mobile || '').replace(/\D/g, '').slice(-10)
+    const key   = phone || (row.email || '').toLowerCase()
+    if (!key) return true
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 // ============================================================================
