@@ -172,6 +172,13 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     if ((!phone && !email) || seen.has(key)) return
     seen.add(key)
 
+    // Bug 4 fix: for App Start, use "Counseled" if either AU (stageIdx) OR AT (leadStageIdx) is "Counseled"
+    const rawStage = normalizeStage(row[cfg.stageIdx])
+    const rawLeadStage = cfg.leadStageIdx !== undefined ? normalizeStage(row[cfg.leadStageIdx]) : ""
+    const stage = (rawStage.toLowerCase() === "counseled" || rawLeadStage.toLowerCase() === "counseled")
+      ? "Counseled"
+      : rawStage
+
     const item = {
       id: key,
       type: cfg.type,
@@ -179,7 +186,7 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
       email,
       phone,
       counsellor: normalizeName(row[cfg.counsellorIdx]) || "Others",
-      stage: normalizeStage(row[cfg.stageIdx]),
+      stage,
       subStage: cellText(row[cfg.subStageIdx]) || "No substage",
       source: cellText(row[cfg.sourceIdx]) || "Unknown",
       notes: cellText(row[cfg.notesIdx]),
@@ -192,34 +199,50 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     rows.push(item)
   }
 
-  // Lead Dump — all leads (fresh + followup) in one sheet
-  // BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, AJ(35)=PaymentStatus, CG(84)=Priority
+  // Bug 2 fix: Lead Dump — only include user type "lead" (AG=32), exclude "applicant" rows
+  // BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, CG(84)=Priority
   // BA(52)=Registered On, BK(62)=Last Activity
-  leadDumpRows.slice(1).forEach(row => add(row, {
+  const LEAD_CFG = {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
     counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
     registeredOnIdx: 52, lastActivityIdx: 62,
-  }))
-  // followupLeadRows is the same sheet — deduplication by phone/email prevents double-counting
-  followupLeadRows.slice(1).forEach(row => add(row, {
-    type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 84, paymentStatusIdx: 35,
-    registeredOnIdx: 52, lastActivityIdx: 62,
-  }))
-  // App Start Dump — all app starts (new + followup) in one sheet
-  // Q(16)=Registered On, BG(58)=Last Activity
-  appStartRows.slice(1).forEach(row => add(row, {
-    type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
-    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: null, paymentStatusIdx: 2,
-    registeredOnIdx: 16, lastActivityIdx: 58,
-  }))
-  appFollowupRows.slice(1).forEach(row => add(row, {
-    type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
-    counsellorIdx: 43, stageIdx: 46, subStageIdx: 47, notesIdx: 64, priorityIdx: 150, paymentStatusIdx: 2,
-    registeredOnIdx: 16, lastActivityIdx: 58,
-  }))
+  }
+  leadDumpRows.slice(1).forEach(row => {
+    if (cellText(row[32]).toLowerCase() !== "lead") return
+    add(row, LEAD_CFG)
+  })
+  followupLeadRows.slice(1).forEach(row => {
+    if (cellText(row[32]).toLowerCase() !== "lead") return
+    add(row, LEAD_CFG)
+  })
 
-  return rows
+  // App Start Dump — leadStageIdx:45 = AT (Lead Stage) used alongside stageIdx:46 = AU (Application Stage)
+  // Bug 4 fix: counseled if either AT or AU = "Counseled"
+  // Q(16)=Registered On, BG(58)=Last Activity
+  const APP_CFG_BASE = {
+    type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
+    counsellorIdx: 43, stageIdx: 46, leadStageIdx: 45, subStageIdx: 47, notesIdx: 64, paymentStatusIdx: 2,
+    registeredOnIdx: 16, lastActivityIdx: 58,
+  }
+  appStartRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: null }))
+  appFollowupRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: 150 }))
+
+  // Bug 1 fix: cross-type dedup — if same phone/email appears as both Lead and App Start,
+  // keep App Start only (it's further in the funnel; Lead entry double-counts the person)
+  const phonePref = new Map()
+  const emailPref = new Map()
+  for (const row of rows) {
+    if (row.phone) {
+      if (!phonePref.has(row.phone) || row.type === "App Start") phonePref.set(row.phone, row)
+    } else if (row.email) {
+      if (!emailPref.has(row.email) || row.type === "App Start") emailPref.set(row.email, row)
+    }
+  }
+  return rows.filter(row => {
+    if (row.phone)  return phonePref.get(row.phone)  === row
+    if (row.email)  return emailPref.get(row.email)  === row
+    return false
+  })
 }
 
 function snapshotPipeline(rows) {
