@@ -2673,7 +2673,7 @@ export default function AdminInsights() {
           // Fetched from the dedicated Call History sheet (VITE_CALLS_HISTORY_SHEET_ID).
           // Row 1 has a broken formula (#ERROR!) — skip it and start from A2.
           // We prepend a synthetic header row matching the known column layout.
-          fetchSheetData('Call History updated Daily', 'A2:V10000', 'FORMATTED_VALUE', CALLS_SHEET_ID),
+          fetchSheetData('Call History updated Daily', 'A2:V', 'FORMATTED_VALUE', CALLS_SHEET_ID),
           fetchSheetData('Lead Dump', 'A:CG'),
         ])
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly
