@@ -12,6 +12,8 @@ function App() {
         <Route path="/komal" element={<Dashboard counsellorName="Komal Pandey" isAdmin={false} />} />
         <Route path="/prerna" element={<Dashboard counsellorName="Prerna Kaushik" isAdmin={false} />} />
         <Route path="/sanjana" element={<Dashboard counsellorName="Sanjana" isAdmin={false} />} />
+        <Route path="/drishti" element={<Dashboard counsellorName="Drishti Majumdar" isAdmin={false} />} />
+        <Route path="/megha" element={<Dashboard counsellorName="Megha Saini" isAdmin={false} />} />
         <Route path="/admin" element={<Dashboard counsellorName="Jasmeet Kaur" isAdmin={true} />} />
         <Route path="/admin/overview" element={<AdminOverview />} />
         <Route path="*" element={<Navigate to="/" />} />

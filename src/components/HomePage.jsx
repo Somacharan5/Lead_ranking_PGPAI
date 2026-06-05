@@ -43,6 +43,20 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link to="/drishti" className="block p-4 bg-orange-50 hover:bg-orange-100 border-2 border-orange-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-orange-700">👤 Drishti Majumdar</span>
+              <span className="text-xs text-orange-500">/drishti →</span>
+            </div>
+          </Link>
+
+          <Link to="/megha" className="block p-4 bg-fuchsia-50 hover:bg-fuchsia-100 border-2 border-fuchsia-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-fuchsia-700">👤 Megha Saini</span>
+              <span className="text-xs text-fuchsia-500">/megha →</span>
+            </div>
+          </Link>
+
           <Link to="/admin" className="block p-4 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 rounded-lg transition">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-amber-700">👨‍💼 Admin — Detailed View</span>

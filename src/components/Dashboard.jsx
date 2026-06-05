@@ -4,7 +4,7 @@ import { getLeadsForCounsellor } from '../utils/leadProcessor'
 import { getRefreshSignal, triggerGlobalRefresh } from '../utils/refreshSignal'
 import LeadTable from './LeadTable'
 
-const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
+const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Megha Saini']
 const POLL_INTERVAL_MS = 60 * 1000 // Check refresh signal every 60 seconds
 const REFRESH_HOURS = [8, 12, 16, 19] // 8 AM, 12 PM, 4 PM, 7 PM
 

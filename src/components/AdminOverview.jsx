@@ -5,7 +5,7 @@ import { triggerGlobalRefresh } from '../utils/refreshSignal'
 import AdminInsights from './AdminInsights'
 import TranscriptionAnalysis from './TranscriptionAnalysis'
 
-const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik']
+const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Megha Saini']
 
 const SECTION_META = [
   { key: 'newAppStart',   label: '📝 New App',      color: 'purple' },
@@ -277,7 +277,7 @@ export default function AdminOverview() {
         </div>
 
         {/* Per-counsellor cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
           {rows.map((row) => (
             <CounsellorCard key={row.name} row={row}
               onDrillDown={() => navigate('/admin', { state: { counsellor: row.name } })} />

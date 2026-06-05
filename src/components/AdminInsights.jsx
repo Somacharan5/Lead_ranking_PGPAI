@@ -14,7 +14,9 @@ const MAIN_COUNSELLORS = [
   { key: "Komal Pandey",   short: "Komal",   color: "#8b5cf6", bg: "#f5f3ff", ring: "#c4b5fd" },
   { key: "Prerna Kaushik", short: "Prerna",  color: "#ec4899", bg: "#fdf2f8", ring: "#f9a8d4" },
   // TODO: update key values to match exact CRM column U / column AR values once confirmed
-  { key: "Sanjana",        short: "Sanjana", color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
+  { key: "Sanjana",          short: "Sanjana",  color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
+  { key: "Drishti Majumdar", short: "Drishti",  color: "#f59e0b", bg: "#fffbeb", ring: "#fcd34d" },
+  { key: "Megha Saini",      short: "Megha",    color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
 ]
 const ALL_COLS = [
   ...MAIN_COUNSELLORS,
@@ -31,8 +33,14 @@ const NAME_MAP = {
   "Prerna Kaushik": "Prerna Kaushik",
   "PRERNA":         "Prerna Kaushik",
   // TODO: update these to match exact CRM column values once confirmed
-  "Sanjana":        "Sanjana",
-  "SANJANA":        "Sanjana",
+  "Sanjana":          "Sanjana",
+  "SANJANA":          "Sanjana",
+  "Drishti Majumdar": "Drishti Majumdar",
+  "Drishti":          "Drishti Majumdar",
+  "DRISHTI":          "Drishti Majumdar",
+  "Megha Saini":      "Megha Saini",
+  "Megha":            "Megha Saini",
+  "MEGHA":            "Megha Saini",
 }
 
 const SECTIONS = [
