@@ -168,6 +168,8 @@ function fmtSerial(val) {
   return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })
 }
 
+const DISQUALIFIED_STAGES = new Set(["not interested", "not eligible", "intent dropped"])
+
 function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRows = [], appFollowupRows = []) {
   const rows = []
   const seen = new Set()
@@ -180,12 +182,22 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     if ((!phone && !email) || seen.has(key)) return
     seen.add(key)
 
-    // Bug 4 fix: for App Start, use "Counseled" if either AU (stageIdx) OR AT (leadStageIdx) is "Counseled"
+    // Resolve effective stage:
+    // - If either AU (appStage) or AT (leadStage) is a disqualified stage (Not Interested / Not Eligible /
+    //   Intent Dropped), that takes priority — the lead is not considered Counseled regardless of the other stage.
+    // - Otherwise, if either stage is "Counseled", treat the lead as Counseled (Bug 4 fix preserved).
     const rawStage = normalizeStage(row[cfg.stageIdx])
     const rawLeadStage = cfg.leadStageIdx !== undefined ? normalizeStage(row[cfg.leadStageIdx]) : ""
-    const stage = (rawStage.toLowerCase() === "counseled" || rawLeadStage.toLowerCase() === "counseled")
-      ? "Counseled"
-      : rawStage
+    const rawStageLower = rawStage.toLowerCase()
+    const rawLeadStageLower = rawLeadStage.toLowerCase()
+    const disqStage = DISQUALIFIED_STAGES.has(rawLeadStageLower) ? rawLeadStage
+                    : DISQUALIFIED_STAGES.has(rawStageLower)     ? rawStage
+                    : null
+    const stage = disqStage
+      ? disqStage
+      : (rawStageLower === "counseled" || rawLeadStageLower === "counseled")
+        ? "Counseled"
+        : rawStage
 
     const item = {
       id: key,

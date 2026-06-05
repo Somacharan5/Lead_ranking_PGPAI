@@ -455,8 +455,11 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
 //   Each group sorted by score desc, preserving table order within group.
 // ============================================================================
 export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName) {
+  const DISQUALIFIED = new Set(['not interested', 'not eligible', 'intent dropped'])
+
   // App Start counsellings
   // Bug 4 fix: include rows where either AU (Application Stage) OR AT (Lead Stage) = "Counseled"
+  // Anomaly fix: if either stage is a disqualified stage, the lead is NOT counseled regardless.
   const appRows = appStartDumpRows.slice(1)
     .filter(row => {
       const counsellor    = (getCol(row, 'AR') || '').trim()
@@ -466,6 +469,8 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
       return (
         counsellor === counsellorName &&
         (appStage === 'counseled' || leadStageAT === 'counseled') &&
+        !DISQUALIFIED.has(appStage) &&
+        !DISQUALIFIED.has(leadStageAT) &&
         paymentStatus !== 'completed'
       )
     })
