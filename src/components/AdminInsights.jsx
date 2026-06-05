@@ -2732,29 +2732,27 @@ export default function AdminInsights() {
     <div className="m-5 bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">❌ {error}</div>
   )
 
-  if (!loading && !error && allRows.length === 0 && diagInfo) return (
-    <div className="m-5 space-y-3">
-      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
-        <div className="font-semibold mb-3">⚠️ No calls found for {date}</div>
-        <div className="space-y-1 text-xs font-mono mb-4">
-          <div>Rows fetched from sheet: <strong>{diagInfo.rawRows}</strong></div>
-          <div>Rows matched to date: <strong>{diagInfo.matched}</strong></div>
-          <div>Sample date format in sheet (col K): <strong>{String(diagInfo.sampleDate)}</strong></div>
-          <div>Latest date with data: <strong>{diagInfo.latestDate}</strong></div>
-        </div>
+  const noCallsBanner = !loading && !error && allRows.length === 0 && diagInfo ? (
+    <div className="mx-5 mt-4 bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+      <div className="text-sm text-amber-800">
+        <span className="font-semibold">No calls on {date}</span>
         {diagInfo.latestDate !== "—" && (
-          <button
-            onClick={() => setDate(diagInfo.latestDate)}
-            className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition">
-            Jump to latest available date ({diagInfo.latestDate})
-          </button>
+          <span className="text-xs text-amber-600 ml-2">(latest data: {diagInfo.latestDate})</span>
         )}
       </div>
+      {diagInfo.latestDate !== "—" && (
+        <button
+          onClick={() => setDate(diagInfo.latestDate)}
+          className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold transition shrink-0">
+          Go to {diagInfo.latestDate}
+        </button>
+      )}
     </div>
-  )
+  ) : null
 
   return (
     <>
+      {noCallsBanner}
       {view === "overview"
         ? <Overview
             date={date}
