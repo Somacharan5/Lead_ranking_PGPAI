@@ -2658,11 +2658,13 @@ export default function AdminInsights() {
       setLoading(true); setError("")
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
+        const CALLS_SHEET_ID = import.meta.env.VITE_CALLS_HISTORY_SHEET_ID
         const [callsDataRaw, leadRaw] = await Promise.all([
+          // Fetched from the dedicated Call History sheet (VITE_CALLS_HISTORY_SHEET_ID).
           // Row 1 has a broken formula (#ERROR!) — skip it and start from A2.
           // We prepend a synthetic header row matching the known column layout.
-          fetchSheetData('Call history', 'A2:V10000', 'FORMATTED_VALUE'),
-          fetchSheetData('Lead Dump',    'A:CG'),
+          fetchSheetData('Call History updated Daily', 'A2:V10000', 'FORMATTED_VALUE', CALLS_SHEET_ID),
+          fetchSheetData('Lead Dump', 'A:CG'),
         ])
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly
         const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Name2","To Name","Country Code","To Number","Call Type","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
@@ -2671,7 +2673,7 @@ export default function AdminInsights() {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })
-        if (callsRaw.length === 0) throw new Error("Call history sheet returned no data — check the sheet name, sharing settings, and API key.")
+        if (callsRaw.length === 0) throw new Error("Call History updated Daily sheet returned no data — check VITE_CALLS_HISTORY_SHEET_ID, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)

@@ -2,12 +2,10 @@
 const SHEET_ID = import.meta.env.VITE_GOOGLE_SHEET_ID
 const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY
 
-const BASE_URL = `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values`
-
-export async function fetchSheetData(sheetName, range = 'A:BZ', valueRenderOption = 'UNFORMATTED_VALUE') {
+export async function fetchSheetData(sheetName, range = 'A:BZ', valueRenderOption = 'UNFORMATTED_VALUE', sheetId = SHEET_ID) {
   try {
     const encodedSheetName = encodeURIComponent(sheetName)
-    const url = `${BASE_URL}/${encodedSheetName}!${range}?key=${API_KEY}`
+    const url = `https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${encodedSheetName}!${range}?key=${API_KEY}`
               + `&valueRenderOption=${valueRenderOption}`
               + `&dateTimeRenderOption=SERIAL_NUMBER`
     const response = await fetch(url)
