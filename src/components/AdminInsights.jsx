@@ -2651,11 +2651,12 @@ export default function AdminInsights() {
   })
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState("")
+  const [diagInfo, setDiagInfo] = useState(null)
 
   useEffect(() => {
     let cancelled = false
     async function load() {
-      setLoading(true); setError("")
+      setLoading(true); setError(""); setDiagInfo(null)
       try {
         const { fetchSheetData } = await import('../utils/sheetsApi')
         const CALLS_SHEET_ID = import.meta.env.VITE_CALLS_HISTORY_SHEET_ID
@@ -2676,6 +2677,13 @@ export default function AdminInsights() {
         if (callsRaw.length === 0) throw new Error("Call History updated Daily sheet returned no data — check VITE_CALLS_HISTORY_SHEET_ID, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
+        // Capture diagnostic info: raw row count, date-matched count, sample date value from col K
+        if (!cancelled) setDiagInfo({
+          rawRows: callsDataRaw.length,
+          matched: rows.length,
+          sampleDate: callsDataRaw[0]?.[10] ?? "—",
+          latestDate: [...callsDataRaw].sort((a, b) => String(b[10]).localeCompare(String(a[10])))[0]?.[10] ?? "—",
+        })
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
         const activePipeline = pipeline.filter(row => !isPaymentCompleted(row.paymentStatus))
         const snapshotKey = "aias_admin_pipeline_snapshot_v1"
@@ -2709,6 +2717,23 @@ export default function AdminInsights() {
 
   if (error) return (
     <div className="m-5 bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">❌ {error}</div>
+  )
+
+  if (!loading && !error && allRows.length === 0 && diagInfo) return (
+    <div className="m-5 space-y-3">
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-5 text-sm text-amber-800">
+        <div className="font-semibold mb-2">⚠️ No calls found for {date}</div>
+        <div className="space-y-1 text-xs font-mono">
+          <div>Rows fetched from sheet: <strong>{diagInfo.rawRows}</strong></div>
+          <div>Rows matched to date: <strong>{diagInfo.matched}</strong></div>
+          <div>Sample date value in col K (row 2): <strong>{String(diagInfo.sampleDate)}</strong></div>
+          <div>Latest date value found: <strong>{String(diagInfo.latestDate)}</strong></div>
+        </div>
+        <div className="mt-3 text-xs text-amber-700">
+          Try selecting a different date above, or check that the sheet has data for this date.
+        </div>
+      </div>
+    </div>
   )
 
   return (
