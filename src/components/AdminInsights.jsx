@@ -16,7 +16,8 @@ const MAIN_COUNSELLORS = [
   // TODO: update key values to match exact CRM column U / column AR values once confirmed
   { key: "Sanjana",          short: "Sanjana",  color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
   { key: "Drishti Majumdar", short: "Drishti",  color: "#f59e0b", bg: "#fffbeb", ring: "#fcd34d" },
-  { key: "Megha Saini",      short: "Megha",    color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
+  { key: "Ishan Ali",        short: "Ishan",    color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
+  { key: "Sunny Singh",      short: "Sunny",    color: "#f43f5e", bg: "#fff1f2", ring: "#fda4af" },
 ]
 const ALL_COLS = [
   ...MAIN_COUNSELLORS,
@@ -38,9 +39,12 @@ const NAME_MAP = {
   "Drishti Majumdar": "Drishti Majumdar",
   "Drishti":          "Drishti Majumdar",
   "DRISHTI":          "Drishti Majumdar",
-  "Megha Saini":      "Megha Saini",
-  "Megha":            "Megha Saini",
-  "MEGHA":            "Megha Saini",
+  "Ishan Ali":        "Ishan Ali",
+  "Ishan":            "Ishan Ali",
+  "ISHAN":            "Ishan Ali",
+  "Sunny Singh":      "Sunny Singh",
+  "Sunny":            "Sunny Singh",
+  "SUNNY":            "Sunny Singh",
 }
 
 const SECTIONS = [
@@ -223,6 +227,8 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
       paymentStatus: cfg.paymentStatusIdx !== null ? cellText(row[cfg.paymentStatusIdx]) : "",
       registeredOn: fmtSerial(row[cfg.registeredOnIdx]),
       lastActivity: fmtSerial(row[cfg.lastActivityIdx]),
+      city: cfg.cityIdx !== undefined ? (cellText(row[cfg.cityIdx]) || "") : "",
+      state: cfg.stateIdx !== undefined ? (cellText(row[cfg.stateIdx]) || "") : "",
     }
     item.bucket = inferPipelineBucket(item)
     rows.push(item)
@@ -251,7 +257,7 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
   const APP_CFG_BASE = {
     type: "App Start", nameIdx: 12, emailIdx: 13, mobileIdx: 14, sourceIdx: 18,
     counsellorIdx: 43, stageIdx: 46, leadStageIdx: 45, subStageIdx: 47, notesIdx: 64, paymentStatusIdx: 2,
-    registeredOnIdx: 16, lastActivityIdx: 58,
+    registeredOnIdx: 16, lastActivityIdx: 58, stateIdx: 74, cityIdx: 75,
   }
   appStartRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: null }))
   appFollowupRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: 150 }))
@@ -2575,7 +2581,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"], ["paid-apps","💰 Paid Apps"]].map(([k,l]) => (
+        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"], ["paid-apps","💰 Paid Apps"], ["transcripts","🎙️ Transcripts"]].map(([k,l]) => (
           <button key={k} onClick={() => setSubTab(k)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
                     subTab === k
@@ -2619,9 +2625,1011 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         {subTab === "paid-apps" && (
           <PaidAppsPanel appRows={appRows} />
         )}
+        {subTab === "transcripts" && (
+          <TranscriptionsPanel date={date} mainTab={mainTab} pipelineRows={pipelineRows} />
+        )}
       </div>
 
       <DrillDrawer drill={drill} onClose={() => setDrill(null)} />
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSCRIPTIONS — Claude helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Merge multiple batch overview results into one unified result
+function mergeOverviewResults(results) {
+  const valid = results.filter(Boolean)
+  if (!valid.length) return null
+  if (valid.length === 1) return valid[0]
+
+  // Scorecards — weighted average per counsellor across batches
+  const cMap = new Map()
+  for (const r of valid) {
+    for (const s of (r.scorecard || [])) {
+      const prev = cMap.get(s.counsellor)
+      if (!prev) { cMap.set(s.counsellor, { ...s }); continue }
+      const total = prev.calls + s.calls
+      const w1 = prev.calls / total, w2 = s.calls / total
+      const avg = f => +(prev[f] * w1 + s[f] * w2).toFixed(1)
+      prev.discovery   = avg('discovery')
+      prev.listening   = avg('listening')
+      prev.objHandling = avg('objHandling')
+      prev.nextStep    = avg('nextStep')
+      prev.ethics      = avg('ethics')
+      prev.avgOverall  = avg('avgOverall')
+      prev.calls       = total
+      const a = prev.avgOverall
+      prev.grade = a >= 4.5 ? 'A' : a >= 3.5 ? 'B' : a >= 2.5 ? 'C' : a >= 1.5 ? 'D' : 'F'
+    }
+  }
+
+  // Red flags — combine all batches, worst first, no cap
+  const qOrder = { Bad: 0, Partially: 1, Good: 2, Excellent: 3 }
+  const topRedFlags = valid.flatMap(r => r.topRedFlags || [])
+    .sort((a, b) => (qOrder[a.quality] ?? 4) - (qOrder[b.quality] ?? 4))
+
+  // Sentiment — majority vote
+  const sentCount = {}
+  for (const r of valid) { const s = r.overallSentiment || 'neutral'; sentCount[s] = (sentCount[s] || 0) + 1 }
+  const overallSentiment = Object.entries(sentCount).sort((a, b) => b[1] - a[1])[0][0]
+
+  // Objections + themes — sum counts, deduplicate, top 5
+  const mergeList = (key) => {
+    const m = new Map()
+    for (const r of valid) for (const item of (r[key] || [])) {
+      const k = (item.objection || item.theme || '').toLowerCase()
+      if (!k) continue
+      const prev = m.get(k)
+      if (!prev) m.set(k, { ...item })
+      else prev.count += item.count
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count).slice(0, 5)
+  }
+
+  return {
+    scorecard:       [...cMap.values()],
+    topRedFlags,
+    overallSentiment,
+    topObjections:   mergeList('topObjections'),
+    keyThemes:       mergeList('keyThemes'),
+  }
+}
+
+async function fetchTranscriptOverview(transcripts, texts, dateStr) {
+  if (!texts.length) return null
+
+  const block = transcripts.slice(0, texts.length).map((t, i) => {
+    const info   = t.leadInfo
+    const name   = info?.name   || t.customerPhone
+    const source = info?.source || 'Unknown'
+    const stage  = info?.stage  || 'Unknown'
+    const text   = (texts[i] || '').replace(/[\r\n]+/g, ' ').slice(0, 600)
+    return `--- Call ${i+1}: ${name} | Counsellor: ${t.counsellor} | Source: ${source} | Stage: ${stage} ---\n${text}`
+  }).join('\n\n')
+
+  const prompt =
+`You are a senior admissions quality analyst reviewing calls from Masters Union (AI & Advanced Analytics program, ₹22.65L fee).
+Period: ${dateStr}. Total calls: ${texts.length}.
+
+${block}
+
+Return ONLY raw JSON (no markdown, no code fences):
+{
+  "scorecard": [
+    {
+      "counsellor": "exact name from calls",
+      "calls": 0,
+      "discovery": 0.0,
+      "listening": 0.0,
+      "objHandling": 0.0,
+      "nextStep": 0.0,
+      "ethics": 0.0,
+      "avgOverall": 0.0,
+      "grade": "D"
+    }
+  ],
+  "topRedFlags": [
+    {
+      "callIndex": 1,
+      "customer": "customer name",
+      "counsellor": "counsellor first name",
+      "category": "Fee",
+      "objection": "exact concern the customer raised",
+      "howHandled": "what the counsellor actually said or did",
+      "quality": "Bad",
+      "betterResponse": "ideal response in 1–2 sentences"
+    }
+  ],
+  "overallSentiment": "neutral",
+  "topObjections": [{ "objection": "short phrase", "count": 0, "resolution": "brief" }],
+  "keyThemes": [{ "theme": "short phrase", "count": 0 }]
+}
+
+Scoring rules (1.0–5.0 per dimension):
+  Discovery    = asked relevant questions about background, goals, current role before pitching
+  Listening    = acknowledged customer concerns, did not interrupt or ignore responses
+  Obj Handling = addressed objections with specific facts/evidence, not vague claims
+  Next Step    = clearly confirmed a follow-up action/time at end of call
+  Ethics       = no false urgency, no inflated scholarship claims, no pressure tactics
+  avgOverall   = average of all 5 · grade: A(≥4.5) B(≥3.5) C(≥2.5) D(≥1.5) F(<1.5)
+
+Red flag rules:
+  Only include quality=Bad or Partially · include ALL instances (no limit)
+  category must be one of: Fee | Intent | Timing | Program fit | Scholarship threshold | Family gatekeeper | Trust | Operational | Other
+  quality: Excellent | Good | Partially | Bad
+  IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call because the lead was weak in English or communicated only in Hindi. English proficiency is a basic requirement for the ₹25L PGP program in Gurgaon — staging such leads as "language barrier" and not pursuing them is correct protocol, not a red flag.
+  topObjections max 5 · keyThemes max 5 · overallSentiment: positive | neutral | negative`
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: {
+      'Content-Type':   'application/json',
+      'x-api-key':      import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 8192,
+      messages:   [{ role: 'user', content: prompt }],
+    }),
+  })
+  if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
+  const d   = await r.json()
+  const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
+  return robustJSONParse(raw)
+}
+
+async function fetchTranscriptLeadAnalysis(text, leadInfo) {
+  const name   = leadInfo?.name   || 'Unknown'
+  const source = leadInfo?.source || 'Unknown'
+  const stage  = leadInfo?.stage  || 'Unknown'
+
+  const prompt =
+`You are a senior admissions quality analyst. Analyse this Masters Union call transcript.
+Lead: ${name} | Source: ${source} | Stage: ${stage}
+
+TRANSCRIPT:
+${text.slice(0, 3000)}
+
+Return ONLY raw JSON (no markdown):
+{
+  "summary": "2–3 sentences describing the call",
+  "intentLevel": "high",
+  "conversionLikelihood": 0,
+  "conversionSignals": ["signal 1"],
+  "actionRecommendation": "one sentence next action for this lead",
+  "scorecard": {
+    "discovery": 0.0,
+    "listening": 0.0,
+    "objHandling": 0.0,
+    "nextStep": 0.0,
+    "ethics": 0.0,
+    "avgOverall": 0.0,
+    "grade": "D"
+  },
+  "redFlags": [
+    {
+      "category": "Fee",
+      "objection": "exact concern the customer raised",
+      "howHandled": "what the counsellor actually said or did",
+      "quality": "Bad",
+      "betterResponse": "ideal response in 1–2 sentences"
+    }
+  ]
+}
+intentLevel: high|medium|low. conversionLikelihood: 0–100.
+Scores 1.0–5.0:
+  Discovery=did they ask background/goals before pitching
+  Listening=acknowledged concerns without interrupting
+  Obj Handling=addressed objections with specific facts (not vague)
+  Next Step=confirmed clear follow-up time/action at end
+  Ethics=no false urgency, inflated scholarship claims, or pressure
+grade: A(≥4.5) B(≥3.5) C(≥2.5) D(≥1.5) F(<1.5)
+category: Fee|Intent|Timing|Program fit|Scholarship threshold|Family gatekeeper|Trust|Operational|Other
+quality: Excellent|Good|Partially|Bad — only include redFlags where quality=Bad or Partially
+IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call because the lead was weak in English or communicated only in Hindi. English proficiency is a basic requirement for the ₹25L PGP program in Gurgaon — staging such leads as "language barrier" and not pursuing them is correct protocol, not a red flag.`
+
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method:  'POST',
+    headers: {
+      'Content-Type':   'application/json',
+      'x-api-key':      import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model:      'claude-sonnet-4-6',
+      max_tokens: 2048,
+      messages:   [{ role: 'user', content: prompt }],
+    }),
+  })
+  if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
+  const d   = await r.json()
+  const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
+  return robustJSONParse(raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSCRIPTIONS — constants
+// ─────────────────────────────────────────────────────────────────────────────
+
+const QUALITY_META = {
+  Excellent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
+  Good:      { bg: 'bg-blue-50',  text: 'text-blue-700',  border: 'border-blue-200'  },
+  Partially: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
+  Bad:       { bg: 'bg-red-50',   text: 'text-red-700',   border: 'border-red-200'   },
+}
+
+const GRADE_META = {
+  A: { bg: 'bg-green-100',  text: 'text-green-800'  },
+  B: { bg: 'bg-blue-100',   text: 'text-blue-800'   },
+  C: { bg: 'bg-amber-100',  text: 'text-amber-800'  },
+  D: { bg: 'bg-orange-100', text: 'text-orange-800' },
+  F: { bg: 'bg-red-100',    text: 'text-red-800'    },
+}
+
+const SCORE_FIELDS = [
+  { key: 'discovery',   label: 'Discovery'    },
+  { key: 'listening',   label: 'Listening'    },
+  { key: 'objHandling', label: 'Obj Handling' },
+  { key: 'nextStep',    label: 'Next Step'    },
+  { key: 'ethics',      label: 'Ethics'       },
+]
+
+const CAT_COLOR = {
+  'Fee':                   'bg-red-100 text-red-700',
+  'Intent':                'bg-orange-100 text-orange-700',
+  'Timing':                'bg-amber-100 text-amber-700',
+  'Program fit':           'bg-purple-100 text-purple-700',
+  'Scholarship threshold': 'bg-cyan-100 text-cyan-700',
+  'Family gatekeeper':     'bg-blue-100 text-blue-700',
+  'Trust':                 'bg-pink-100 text-pink-700',
+  'Operational':           'bg-gray-100 text-gray-700',
+  'Other':                 'bg-slate-100 text-slate-700',
+}
+
+function scoreColor(v) {
+  if (v == null) return 'text-gray-400'
+  return v >= 4 ? 'text-green-700' : v >= 3 ? 'text-blue-700' : v >= 2 ? 'text-amber-700' : 'text-red-700'
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSCRIPTIONS — Lead card (expandable)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TranscriptCard({ t, onAnalyse, analysis, readText }) {
+  const [expanded,  setExpanded]  = useState(false)
+  const [analysing, setAnalysing] = useState(false)
+
+  const info       = t.leadInfo
+  const name       = info?.name   || `···${t.customerPhone.slice(-4)}`
+  const source     = info?.source || '—'
+  const stage      = info?.stage  || '—'
+  const intentClr  = { high: '#16a34a', medium: '#d97706', low: '#6b7280' }
+  const fmtTime    = s => (s && s.length >= 6) ? `${s.slice(0,2)}:${s.slice(2,4)}` : (s || '')
+
+  const handleExpand = async () => {
+    const nowOpen = !expanded
+    setExpanded(nowOpen)
+    if (nowOpen && !analysis && !analysing) {
+      setAnalysing(true)
+      try { await onAnalyse(t.fileId) } finally { setAnalysing(false) }
+    }
+  }
+
+  const likelihood = analysis?.conversionLikelihood
+  const lhColor    = likelihood >= 60 ? '#16a34a' : likelihood >= 35 ? '#d97706' : '#6b7280'
+  const sc         = analysis?.scorecard
+  const gm         = sc?.grade ? GRADE_META[sc.grade] || GRADE_META.D : null
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+      {/* Header */}
+      <div className="px-4 py-3 cursor-pointer hover:bg-gray-50 transition" onClick={handleExpand}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]" title={name}>{name}</span>
+              {analysis && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: `${intentClr[analysis.intentLevel]}18`, color: intentClr[analysis.intentLevel] }}>
+                  {(analysis.intentLevel || '').toUpperCase()} intent
+                </span>
+              )}
+              {gm && (
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gm.bg} ${gm.text}`}>
+                  Grade {sc.grade} · {sc.avgOverall?.toFixed(1)}
+                </span>
+              )}
+              {analysis?.redFlags?.length > 0 && (
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-red-50 text-red-700 border border-red-200">
+                  {analysis.redFlags.length} flag{analysis.redFlags.length > 1 ? 's' : ''}
+                </span>
+              )}
+            </div>
+            <div className="text-xs text-gray-400 mt-1">
+              {t.counsellor.split(' ')[0]} · {source} · {stage} · {fmtTime(t.fileTime)}
+            </div>
+          </div>
+          <div className="flex items-center gap-3 flex-shrink-0">
+            {likelihood != null && (
+              <div className="text-right">
+                <div className="text-xs text-gray-400">Likelihood</div>
+                <div className="text-sm font-bold" style={{ color: lhColor }}>{likelihood}%</div>
+              </div>
+            )}
+            <div className="text-gray-300 text-sm">{expanded ? '▲' : '▼'}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Expanded */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-gray-100">
+          {analysing && (
+            <div className="py-6 text-center">
+              <div className="inline-block w-5 h-5 border-2 border-gray-700 border-t-transparent rounded-full animate-spin mb-2" />
+              <div className="text-xs text-gray-400">Analysing transcript with AI…</div>
+            </div>
+          )}
+
+          {analysis && !analysing && (
+            <div className="mt-3 space-y-3">
+              <p className="text-sm text-gray-600 leading-relaxed">{analysis.summary}</p>
+
+              {/* Scorecard */}
+              {sc && (
+                <div className="bg-gray-50 rounded-lg border border-gray-100 p-3">
+                  <div className="flex items-center justify-between mb-2.5">
+                    <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Call Scorecard</span>
+                    {gm && (
+                      <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${gm.bg} ${gm.text}`}>
+                        Grade {sc.grade} · {sc.avgOverall?.toFixed(2)} / 5
+                      </span>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-5 gap-2">
+                    {SCORE_FIELDS.map(({ key, label }) => (
+                      <div key={key} className="text-center">
+                        <div className="text-xs text-gray-400 mb-1 leading-tight">{label}</div>
+                        <div className={`text-sm font-bold ${scoreColor(sc[key])}`}>
+                          {sc[key] != null ? sc[key].toFixed(1) : '—'}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Conversion signals */}
+              {analysis.conversionSignals?.length > 0 && (
+                <div className="bg-green-50 rounded-lg p-3 border border-green-100">
+                  <div className="text-xs font-semibold text-green-700 mb-2 uppercase tracking-wide">Conversion Signals</div>
+                  {analysis.conversionSignals.map((s, i) => (
+                    <div key={i} className="text-xs text-green-700 flex gap-1.5 mb-1 last:mb-0">
+                      <span className="flex-shrink-0 mt-0.5">✓</span>{s}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Next action */}
+              {analysis.actionRecommendation && (
+                <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 flex gap-2">
+                  <span className="text-blue-500 flex-shrink-0">→</span>
+                  <div>
+                    <span className="text-xs font-semibold text-blue-700">Next action: </span>
+                    <span className="text-xs text-blue-700">{analysis.actionRecommendation}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Red flags */}
+              {analysis.redFlags?.length > 0 && (
+                <div className="space-y-2">
+                  <div className="text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                    Red Flags ({analysis.redFlags.length})
+                  </div>
+                  {analysis.redFlags.map((f, i) => {
+                    const qm  = QUALITY_META[f.quality] || QUALITY_META.Partially
+                    const cat = CAT_COLOR[f.category]   || 'bg-gray-100 text-gray-700'
+                    return (
+                      <div key={i} className={`rounded-lg border p-3 ${qm.bg} ${qm.border}`}>
+                        <div className="flex items-center gap-1.5 mb-1.5">
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cat}`}>{f.category}</span>
+                          <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${qm.bg} ${qm.text} ${qm.border}`}>{f.quality}</span>
+                        </div>
+                        <div className={`text-xs font-medium ${qm.text} mb-1`}>"{f.objection}"</div>
+                        <div className="text-xs text-gray-600"><span className="font-medium">Handled: </span>{f.howHandled}</div>
+                        {f.betterResponse && (
+                          <div className="text-xs text-gray-700 mt-1.5 bg-white/70 rounded px-2 py-1 border border-gray-200">
+                            <span className="font-semibold text-gray-800">✦ Better: </span>{f.betterResponse}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {readText && (
+            <details className="mt-3">
+              <summary className="text-xs text-gray-400 cursor-pointer hover:text-gray-600 select-none">View full transcript</summary>
+              <pre className="mt-2 text-xs text-gray-500 bg-gray-50 rounded-lg p-3 whitespace-pre-wrap overflow-auto max-h-56 font-sans leading-relaxed border border-gray-100">
+                {readText}
+              </pre>
+            </details>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TRANSCRIPTIONS — Main panel
+// ─────────────────────────────────────────────────────────────────────────────
+
+function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
+  const [viewMode,         setViewMode]         = useState('daily')   // 'daily' | 'monthly'
+  const [dateFilter,       setDateFilter]       = useState(propDate)
+  const [monthFilter,      setMonthFilter]      = useState(() => propDate.slice(0, 7))
+  const [counsellorFilter, setCounsellorFilter] = useState(mainTab !== 'overall' ? mainTab : 'all')
+  const [sourceFilter,     setSourceFilter]     = useState('all')
+  const [viewTab,          setViewTab]          = useState('overview')
+
+  const [loading,          setLoading]          = useState(false)
+  const [error,            setError]            = useState('')
+  const [transcripts,      setTranscripts]      = useState([])
+  const [readCache,        setReadCache]        = useState({})
+  const [overviewInsights, setOverviewInsights] = useState(null)
+  const [overviewLoading,  setOverviewLoading]  = useState(false)
+  const [overviewErr,      setOverviewErr]      = useState('')
+  const [perLeadCache,     setPerLeadCache]     = useState({})
+
+  // Auto-load whenever active date/month, counsellor, or mode changes
+  useEffect(() => {
+    loadTranscripts()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, dateFilter, monthFilter, counsellorFilter])
+
+  // phone → pipeline row (for lead enrichment)
+  const leadPhoneMap = useMemo(() => {
+    const m = {}
+    pipelineRows.forEach(r => { if (r.phone) m[r.phone] = r })
+    return m
+  }, [pipelineRows])
+
+  // Apply source filter on top of the loaded transcript list
+  const filtered = useMemo(() => {
+    if (sourceFilter === 'all') return transcripts
+    return transcripts.filter(t => t.leadInfo?.source === sourceFilter)
+  }, [transcripts, sourceFilter])
+
+  const sources = useMemo(() => {
+    const s = new Set(transcripts.map(t => t.leadInfo?.source).filter(Boolean))
+    return [...s].sort()
+  }, [transcripts])
+
+  // Quick stats from enriched transcript list (no AI needed)
+  const quickStats = useMemo(() => {
+    const topOf = (key) => {
+      const counts = {}
+      filtered.forEach(t => {
+        const v = key === 'counsellor' ? t.counsellor : t.leadInfo?.[key]
+        if (v && v !== 'Unknown' && v !== '') counts[v] = (counts[v] || 0) + 1
+      })
+      const top = Object.entries(counts).sort((a, b) => b[1] - a[1])[0]
+      return top ? { label: top[0], count: top[1] } : null
+    }
+    return {
+      topSource:     topOf('source'),
+      topCounsellor: topOf('counsellor'),
+      topCity:       topOf('city'),
+    }
+  }, [filtered])
+
+  // ── AI cache helpers ──────────────────────────────────────────────────────
+  async function aiCacheGet(key) {
+    try {
+      const r = await fetch(`/api/ai-cache?key=${encodeURIComponent(key)}`)
+      const d = await r.json()
+      return d.hit ? d.result : null
+    } catch { return null }
+  }
+  async function aiCacheSet(key, result) {
+    try {
+      await fetch('/api/ai-cache', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ key, result }),
+      })
+    } catch { /* non-fatal */ }
+  }
+
+  // ── Load transcript list from Drive ────────────────────────────────────────
+  async function loadTranscripts() {
+    setLoading(true)
+    setError('')
+    setTranscripts([])
+    setOverviewInsights(null)
+    setPerLeadCache({})
+    setReadCache({})
+    try {
+      const ps = new URLSearchParams({ action: 'list' })
+      if (viewMode === 'monthly') ps.set('month', monthFilter)
+      else                        ps.set('date',  dateFilter)
+      if (counsellorFilter !== 'all') ps.set('counsellor', counsellorFilter)
+      const r = await fetch(`/api/drive?${ps}`)
+      if (!r.ok) {
+        const msg = r.status === 404
+          ? 'API route not found — deploy to Vercel first.'
+          : `Drive API error (${r.status})`
+        throw new Error(msg)
+      }
+      const { files, error: apiErr } = await r.json()
+      if (apiErr) throw new Error(apiErr)
+      const enriched = (files || []).map(f => ({
+        ...f,
+        leadInfo: leadPhoneMap[f.customerPhone] || null,
+      }))
+      setTranscripts(enriched)
+
+      // Auto-load cached insights for this date — no button needed if already analysed
+      if (enriched.length) {
+        const label  = viewMode === 'monthly' ? monthFilter : dateFilter
+        const cKey   = `transcript_overview:${counsellorFilter}:${label}`
+        const cached = await aiCacheGet(cKey)
+        if (cached) setOverviewInsights(cached)
+      }
+    } catch (e) {
+      setError(e.message)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Overview: check cache first, then read transcripts + call Claude ───────
+  async function runOverview(skipCache = false) {
+    if (!filtered.length) return
+    setOverviewLoading(true)
+    setOverviewErr('')
+    setOverviewInsights(null)
+    try {
+      const label    = viewMode === 'monthly' ? monthFilter : dateFilter
+      const cKey     = `transcript_overview:${counsellorFilter}:${label}`
+
+      // 1. Check permanent AI cache (skipped when Re-analyse is clicked)
+      if (!skipCache) {
+        const cached = await aiCacheGet(cKey)
+        if (cached) {
+          setOverviewInsights(cached)
+          setOverviewLoading(false)
+          return
+        }
+      }
+
+      // 2. Cache miss — read ALL transcripts, batch 50 at a time, merge results
+      const BATCH = 50
+      const allTexts = await Promise.all(filtered.map(async t => {
+        if (readCache[t.fileId]) return readCache[t.fileId]
+        const r   = await fetch(`/api/drive?action=read&fileId=${t.fileId}`)
+        const d   = await r.json()
+        const txt = d.text || ''
+        setReadCache(c => ({ ...c, [t.fileId]: txt }))
+        return txt
+      }))
+
+      const batches = []
+      for (let i = 0; i < filtered.length; i += BATCH) {
+        batches.push({ transcripts: filtered.slice(i, i + BATCH), texts: allTexts.slice(i, i + BATCH) })
+      }
+
+      const batchResults = await Promise.all(
+        batches.map(b => fetchTranscriptOverview(b.transcripts, b.texts, label))
+      )
+      const result = mergeOverviewResults(batchResults)
+      setOverviewInsights(result)
+
+      // 3. Save to permanent cache
+      await aiCacheSet(cKey, result)
+    } catch (e) {
+      setOverviewErr(e.message)
+    } finally {
+      setOverviewLoading(false)
+    }
+  }
+
+  // ── Per-lead: check cache first, then lazy read + Claude ──────────────────
+  async function analyseOneLead(fileId) {
+    if (perLeadCache[fileId]) return
+    const t = filtered.find(x => x.fileId === fileId)
+    if (!t) return
+
+    // 1. Check permanent AI cache
+    const cKey   = `transcript_lead:${fileId}`
+    const cached = await aiCacheGet(cKey)
+    if (cached) {
+      setPerLeadCache(c => ({ ...c, [fileId]: cached }))
+      return
+    }
+
+    let text = readCache[fileId]
+    if (!text) {
+      const r = await fetch(`/api/drive?action=read&fileId=${fileId}`)
+      const d = await r.json()
+      text    = d.text || ''
+      setReadCache(c => ({ ...c, [fileId]: text }))
+    }
+    const analysis = await fetchTranscriptLeadAnalysis(text, t.leadInfo)
+    setPerLeadCache(c => ({ ...c, [fileId]: analysis }))
+    // Save to permanent cache
+    await aiCacheSet(cKey, analysis)
+  }
+
+  const selCls = "border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-emerald-500 bg-white"
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── Filter bar ── */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-gray-700">🎙️ Transcriptions</span>
+        {/* Daily / Monthly toggle */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          {[['daily','Daily'], ['monthly','Monthly']].map(([k, l]) => (
+            <button key={k} onClick={() => setViewMode(k)}
+                    className={`px-3 py-1.5 text-xs font-medium transition ${
+                      viewMode === k ? 'bg-gray-900 text-white' : 'bg-white hover:bg-gray-50 text-gray-600'
+                    }`}>
+              {l}
+            </button>
+          ))}
+        </div>
+        {viewMode === 'daily'
+          ? <input type="date"  value={dateFilter}  onChange={e => setDateFilter(e.target.value)}  className={selCls} />
+          : <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={selCls} />
+        }
+        <select value={counsellorFilter} onChange={e => setCounsellorFilter(e.target.value)} className={selCls}>
+          <option value="all">All counsellors</option>
+          {MAIN_COUNSELLORS.map(c => <option key={c.key} value={c.key}>{c.short}</option>)}
+        </select>
+        {sources.length > 0 && (
+          <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)} className={selCls}>
+            <option value="all">All sources</option>
+            {sources.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
+        <span className="ml-auto text-xs text-gray-400">
+          {loading ? 'Loading…' : transcripts.length > 0 ? `${filtered.length} transcripts` : ''}
+        </span>
+      </div>
+
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>
+      )}
+
+      {/* ── Content once transcripts are loaded ── */}
+      {transcripts.length > 0 && (
+        <>
+          {/* Sub-view toggle */}
+          <div className="flex gap-2">
+            {[['overview','📊 Overview'], ['detailed','📋 Detailed View']].map(([k, l]) => (
+              <button key={k} onClick={() => setViewTab(k)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                        viewTab === k ? 'bg-emerald-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                      }`}>
+                {l}
+              </button>
+            ))}
+          </div>
+
+          {/* ── OVERVIEW ── */}
+          {viewTab === 'overview' && (
+            <div className="space-y-4">
+              {/* Quick stats: total · top source · top counsellor · top city */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Total Calls</div>
+                  <div className="text-2xl font-bold text-gray-900">{filtered.length}</div>
+                  <div className="text-xs text-gray-400">{dateFilter}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Top Source</div>
+                  <div className="text-lg font-bold text-gray-900 truncate">{quickStats.topSource?.label || '—'}</div>
+                  <div className="text-xs text-gray-400">{quickStats.topSource ? `${quickStats.topSource.count} calls` : 'no data'}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Top Counsellor</div>
+                  <div className="text-lg font-bold text-gray-900 truncate">{quickStats.topCounsellor?.label || '—'}</div>
+                  <div className="text-xs text-gray-400">{quickStats.topCounsellor ? `${quickStats.topCounsellor.count} calls` : 'no data'}</div>
+                </div>
+                <div className="bg-white rounded-xl border border-gray-200 p-4">
+                  <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Top City</div>
+                  <div className="text-lg font-bold text-gray-900 truncate">{quickStats.topCity?.label || '—'}</div>
+                  <div className="text-xs text-gray-400">{quickStats.topCity ? `${quickStats.topCity.count} calls` : 'no data'}</div>
+                </div>
+              </div>
+
+              {/* AI Analysis block */}
+              {!overviewInsights && !overviewLoading && (
+                <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+                  <div className="text-2xl mb-3">🤖</div>
+                  <div className="text-sm font-semibold text-gray-800 mb-1">AI Overview Analysis</div>
+                  <div className="text-xs text-gray-400 mb-5">
+                    Read and analyse all {filtered.length} transcripts with Claude — objections, themes, counselling performance
+                  </div>
+                  <button onClick={runOverview}
+                          className="px-5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition">
+                    ✦ Load Insights
+                  </button>
+                </div>
+              )}
+
+              {overviewLoading && (
+                <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+                  <div className="inline-block w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
+                  <div className="text-sm text-gray-600">Reading & analysing transcripts…</div>
+                  <div className="text-xs text-gray-400 mt-1">{filtered.length} transcripts · batched in parallel · may take 30–60 seconds</div>
+                </div>
+              )}
+
+              {overviewErr && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+                  {overviewErr}
+                  <button onClick={runOverview} className="ml-3 underline text-xs">Retry</button>
+                </div>
+              )}
+
+              {overviewInsights && (
+                <div className="space-y-5">
+
+                  {/* ── Counsellor Scorecard ── */}
+                  <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                    <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <span className="text-sm font-semibold text-gray-800">Counsellor Scorecard</span>
+                      <span className="text-xs text-gray-400">{viewMode === 'monthly' ? monthFilter : dateFilter} · scores out of 5</span>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-xs">
+                        <thead>
+                          <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide text-center">
+                            <th className="px-4 py-2.5 text-left">#</th>
+                            <th className="px-4 py-2.5 text-left">Counsellor</th>
+                            <th className="px-4 py-2.5">Calls</th>
+                            <th className="px-4 py-2.5">Discovery</th>
+                            <th className="px-4 py-2.5">Listening</th>
+                            <th className="px-4 py-2.5">Obj Handling</th>
+                            <th className="px-4 py-2.5">Next Step</th>
+                            <th className="px-4 py-2.5">Ethics</th>
+                            <th className="px-4 py-2.5">Avg Overall</th>
+                            <th className="px-4 py-2.5">Grade</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(overviewInsights.scorecard || []).map((s, i) => {
+                            const gm = GRADE_META[s.grade] || GRADE_META.D
+                            return (
+                              <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 text-center">
+                                <td className="px-4 py-3 text-left text-gray-400">{i + 1}</td>
+                                <td className="px-4 py-3 text-left font-semibold text-gray-800 whitespace-nowrap">{s.counsellor}</td>
+                                <td className="px-4 py-3 font-medium text-gray-700">{s.calls}</td>
+                                <td className={`px-4 py-3 font-medium ${scoreColor(s.discovery)}`}>{s.discovery?.toFixed(1)}</td>
+                                <td className={`px-4 py-3 font-medium ${scoreColor(s.listening)}`}>{s.listening?.toFixed(1)}</td>
+                                <td className={`px-4 py-3 font-medium ${scoreColor(s.objHandling)}`}>{s.objHandling?.toFixed(1)}</td>
+                                <td className={`px-4 py-3 font-medium ${scoreColor(s.nextStep)}`}>{s.nextStep?.toFixed(1)}</td>
+                                <td className={`px-4 py-3 font-medium ${scoreColor(s.ethics)}`}>{s.ethics?.toFixed(1)}</td>
+                                <td className={`px-4 py-3 font-bold ${scoreColor(s.avgOverall)}`}>{s.avgOverall?.toFixed(2)}</td>
+                                <td className="px-4 py-3">
+                                  <span className={`px-2.5 py-0.5 rounded-full font-bold text-xs ${gm.bg} ${gm.text}`}>{s.grade}</span>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* ── Red Flag Category Matrix ── */}
+                  {(overviewInsights.topRedFlags || []).length > 0 && (() => {
+                    const ALL_CATS = ['Fee','Intent','Timing','Program fit','Scholarship threshold','Family gatekeeper','Trust','Operational','Other']
+                    const flags    = overviewInsights.topRedFlags || []
+                    // Collect unique counsellors from flags
+                    const counsellors = [...new Set(flags.map(f => f.counsellor).filter(Boolean))].sort()
+                    // Build count matrix
+                    const matrix = {}
+                    ALL_CATS.forEach(cat => {
+                      matrix[cat] = {}
+                      counsellors.forEach(c => { matrix[cat][c] = 0 })
+                      matrix[cat].__total = 0
+                    })
+                    flags.forEach(f => {
+                      const cat = ALL_CATS.includes(f.category) ? f.category : 'Other'
+                      const c   = f.counsellor
+                      if (!matrix[cat]) return
+                      if (c && matrix[cat][c] !== undefined) matrix[cat][c]++
+                      matrix[cat].__total++
+                    })
+                    // Only show categories that have at least one flag
+                    const activeRows = ALL_CATS.filter(cat => matrix[cat].__total > 0)
+                    if (!activeRows.length) return null
+                    const colTotal = {}
+                    counsellors.forEach(c => { colTotal[c] = activeRows.reduce((s, cat) => s + (matrix[cat][c] || 0), 0) })
+                    const grandTotal = activeRows.reduce((s, cat) => s + matrix[cat].__total, 0)
+                    const cellBg = n => n === 0 ? '' : n === 1 ? 'bg-amber-50 text-amber-700' : n <= 3 ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'
+                    return (
+                      <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-800">🔎 Red Flag Category Breakdown by Counsellor</span>
+                          <span className="text-xs text-gray-400">{grandTotal} total flags</span>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+                                <th className="px-4 py-2.5 text-left">Category</th>
+                                {counsellors.map(c => <th key={c} className="px-4 py-2.5 text-center whitespace-nowrap">{c}</th>)}
+                                <th className="px-4 py-2.5 text-center font-bold text-gray-700">Total</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {activeRows.map(cat => (
+                                <tr key={cat} className="border-t border-gray-50 hover:bg-gray-50">
+                                  <td className="px-4 py-2.5 font-medium text-gray-700 whitespace-nowrap">
+                                    <span className={`px-2 py-0.5 rounded-full text-xs ${CAT_COLOR[cat] || 'bg-gray-100 text-gray-700'}`}>{cat}</span>
+                                  </td>
+                                  {counsellors.map(c => {
+                                    const n = matrix[cat][c] || 0
+                                    return <td key={c} className={`px-4 py-2.5 text-center font-medium rounded ${cellBg(n)}`}>{n || '—'}</td>
+                                  })}
+                                  <td className="px-4 py-2.5 text-center font-bold text-gray-800">{matrix[cat].__total}</td>
+                                </tr>
+                              ))}
+                              <tr className="border-t-2 border-gray-200 bg-gray-50 font-bold text-gray-700">
+                                <td className="px-4 py-2.5">Total</td>
+                                {counsellors.map(c => <td key={c} className="px-4 py-2.5 text-center">{colTotal[c]}</td>)}
+                                <td className="px-4 py-2.5 text-center text-gray-900">{grandTotal}</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )
+                  })()}
+
+                  {/* ── Red Flags Detail Table ── */}
+                  {(overviewInsights.topRedFlags || []).length > 0 && (
+                    <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
+                      <div className="px-5 py-3 border-b border-gray-100">
+                        <span className="text-sm font-semibold text-gray-800">🚩 Red Flags — All Concerning Moments</span>
+                          <span className="text-xs text-gray-400">{overviewInsights.topRedFlags.length} flags</span>
+                      </div>
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide">
+                              <th className="px-4 py-2.5 text-left">Customer</th>
+                              <th className="px-4 py-2.5 text-left">Counsellor</th>
+                              <th className="px-4 py-2.5 text-left">Category</th>
+                              <th className="px-4 py-2.5 text-left">Objection / Moment</th>
+                              <th className="px-4 py-2.5 text-left">How Handled</th>
+                              <th className="px-4 py-2.5 text-left">Better Response</th>
+                              <th className="px-4 py-2.5 text-center">Quality</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {overviewInsights.topRedFlags.map((f, i) => {
+                              const qm  = QUALITY_META[f.quality] || QUALITY_META.Partially
+                              const cat = CAT_COLOR[f.category]   || 'bg-gray-100 text-gray-700'
+                              return (
+                                <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 align-top">
+                                  <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{f.customer}</td>
+                                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{f.counsellor}</td>
+                                  <td className="px-4 py-3">
+                                    <span className={`px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${cat}`}>{f.category}</span>
+                                  </td>
+                                  <td className="px-4 py-3 text-gray-700 max-w-[200px]">{f.objection}</td>
+                                  <td className="px-4 py-3 text-gray-500 max-w-[200px]">{f.howHandled}</td>
+                                  <td className="px-4 py-3 text-gray-700 max-w-[220px] italic">{f.betterResponse}</td>
+                                  <td className="px-4 py-3 text-center">
+                                    <span className={`px-2 py-0.5 rounded-full font-semibold border whitespace-nowrap ${qm.bg} ${qm.text} ${qm.border}`}>{f.quality}</span>
+                                  </td>
+                                </tr>
+                              )
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Monthly extras: Sentiment + Objections + Themes ── */}
+                  {viewMode === 'monthly' && (
+                    <>
+                      {overviewInsights.overallSentiment && (
+                        <div className={`rounded-xl border p-5 ${SENTIMENT[overviewInsights.overallSentiment]?.bg || 'bg-gray-50'}`}>
+                          <div className="text-xs text-gray-500 uppercase tracking-wide mb-1">Overall Sentiment ({monthFilter})</div>
+                          <div className={`text-xl font-bold capitalize ${SENTIMENT[overviewInsights.overallSentiment]?.text || 'text-gray-800'}`}>
+                            {overviewInsights.overallSentiment}
+                          </div>
+                        </div>
+                      )}
+
+                      {(overviewInsights.topObjections || []).length > 0 && (
+                        <div className="bg-white rounded-xl border border-gray-200 p-5">
+                          <div className="text-sm font-semibold text-gray-800 mb-3">Top Objections (Monthly)</div>
+                          <div className="space-y-3">
+                            {overviewInsights.topObjections.map(({ objection, count, resolution }, i) => (
+                              <div key={i} className="border-l-2 border-red-300 pl-3">
+                                <div className="flex justify-between items-start">
+                                  <span className="text-sm text-gray-800">"{objection}"</span>
+                                  <span className="text-xs text-gray-400 ml-2 flex-shrink-0">{count}×</span>
+                                </div>
+                                {resolution && <div className="text-xs text-gray-500 mt-0.5">→ {resolution}</div>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(overviewInsights.keyThemes || []).length > 0 && (
+                        <div className="bg-white rounded-xl border border-gray-200 p-5">
+                          <div className="text-sm font-semibold text-gray-800 mb-3">Key Themes (Monthly)</div>
+                          <div className="flex flex-wrap gap-2">
+                            {overviewInsights.keyThemes.map(({ theme, count }, i) => (
+                              <span key={i} className="inline-flex items-center gap-1.5 bg-gray-100 text-gray-700 rounded-full px-3 py-1 text-xs font-medium">
+                                {theme}<span className="text-gray-400">·{count}</span>
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  <div className="text-right">
+                    <button onClick={() => runOverview(true)} className="text-xs text-gray-400 hover:text-gray-600 underline">Re-analyse</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── DETAILED VIEW ── */}
+          {viewTab === 'detailed' && (
+            <div className="space-y-3">
+              <div className="text-xs text-gray-400 px-1">
+                {filtered.length} transcripts · click any card to expand — AI analysis runs on first open
+              </div>
+              {filtered.map(t => (
+                <TranscriptCard
+                  key={t.fileId}
+                  t={t}
+                  onAnalyse={analyseOneLead}
+                  analysis={perLeadCache[t.fileId]}
+                  readText={readCache[t.fileId]}
+                />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Empty state */}
+      {!loading && transcripts.length === 0 && !error && (
+        <div className="bg-white rounded-xl border border-gray-200 p-14 text-center">
+          <div className="text-3xl mb-3">🎙️</div>
+          <div className="text-sm font-semibold text-gray-700 mb-1">No transcripts loaded</div>
+          <div className="text-xs text-gray-400">No transcripts found for this date / counsellor</div>
+        </div>
+      )}
     </div>
   )
 }
@@ -2667,19 +3675,23 @@ export default function AdminInsights() {
     async function load() {
       setLoading(true); setError(""); setDiagInfo(null)
       try {
-        const { fetchSheetData } = await import('../utils/sheetsApi')
-        const CALLS_SHEET_ID = import.meta.env.VITE_CALLS_HISTORY_SHEET_ID
+        // Route all sheet fetches through /api/sheets (server-side cache, 20-min TTL)
+        async function fetchCached(sheet, range) {
+          const params = new URLSearchParams({ action: 'fetch', sheet, range })
+          const r = await fetch(`/api/sheets?${params}`)
+          if (!r.ok) throw new Error(`Sheet fetch failed: ${sheet} ${r.status}`)
+          const d = await r.json()
+          return d.rows || []
+        }
+
         const [callsDataRaw, leadRaw] = await Promise.all([
-          // Fetched from the dedicated Call History sheet (VITE_CALLS_HISTORY_SHEET_ID).
-          // Row 1 has a broken formula (#ERROR!) — skip it and start from A2.
-          // We prepend a synthetic header row matching the known column layout.
-          fetchSheetData('Call History updated Daily', 'A2:V', 'FORMATTED_VALUE', CALLS_SHEET_ID),
-          fetchSheetData('Lead Dump', 'A:CG'),
+          fetchCached('Call History updated Daily', 'A2:V'),
+          fetchCached('Lead Dump', 'A:CG'),
         ])
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly
         const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Name2","To Name","Country Code","To Number","Call Type","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
         const callsRaw = [CALLS_HEADER, ...callsDataRaw]
-        const appRaw = await fetchSheetData('App Start Dump', 'A:EU').catch(e => {
+        const appRaw = await fetchCached('App Start Dump', 'A:EU').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })

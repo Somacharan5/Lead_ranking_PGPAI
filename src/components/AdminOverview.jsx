@@ -5,7 +5,7 @@ import { triggerGlobalRefresh } from '../utils/refreshSignal'
 import AdminInsights from './AdminInsights'
 import TranscriptionAnalysis from './TranscriptionAnalysis'
 
-const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Megha Saini']
+const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Ishan Ali', 'Sunny Singh']
 
 const SECTION_META = [
   { key: 'newAppStart',   label: '📝 New App',      color: 'purple' },
@@ -594,14 +594,16 @@ function BlackoutListPage({ blackouts, loading, onBack, onSelect, onReload, onBl
 
 function extractBlackoutLeads(rows, campaign, source, type) {
   const isLead    = type === 'Lead'
-  const campIdx   = isLead ? 7  : 22   // col H for Lead Dump, col W for App Start
+  // Lead Dump (A:CG): H=7 campaign, G=6 source, A=0 name, B=1 email, C=2 mobile, BC=54 counsellor, BD=55 stage, BA=52 registered
+  // App Start Dump (A:EU): W=22 campaign, S=18 source, M=12 name, N=13 email, O=14 mobile, AR=43 counsellor, AU=46 stage, Q=16 registered
+  const campIdx   = isLead ? 7  : 22
   const srcIdx    = isLead ? 6  : 18
   const nameIdx   = isLead ? 0  : 12
   const emailIdx  = isLead ? 1  : 13
   const mobileIdx = isLead ? 2  : 14
-  const cslrIdx   = isLead ? 20 : 43
-  const stageIdx  = isLead ? 21 : 46
-  const regIdx    = isLead ? 18 : 16
+  const cslrIdx   = isLead ? 54 : 43
+  const stageIdx  = isLead ? 55 : 46
+  const regIdx    = isLead ? 52 : 16
 
   const campLower = campaign.toLowerCase()
   const srcLower  = (source || '').toLowerCase()
@@ -633,22 +635,21 @@ function BlackoutDetailPage({ blackout, onBack }) {
     async function load() {
       setLoading(true); setError('')
       try {
-        const { fetchSheetData } = await import('../utils/sheetsApi')
-        const results = await Promise.allSettled([
-          fetchSheetData('Lead Dump',                  'A:BW'),
-          fetchSheetData('Followup Sheet - LEAD',      'A:BW'),
-          fetchSheetData('New - App start',            'A:EU'),
-          fetchSheetData('Followup sheet - App start', 'A:EU'),
+        async function fetchCached(sheet, range) {
+          const params = new URLSearchParams({ action: 'fetch', sheet, range })
+          const r = await fetch(`/api/sheets?${params}`)
+          if (!r.ok) throw new Error(`${r.status}`)
+          const d = await r.json()
+          return d.rows || []
+        }
+        const [leadDump, appStartDump] = await Promise.all([
+          fetchCached('Lead Dump',      'A:CG'),
+          fetchCached('App Start Dump', 'A:EU'),
         ])
-        const [leadDump, followupLead, appStart, appFollowup] = results.map(r =>
-          r.status === 'fulfilled' ? r.value : []
-        )
         const { campaign, source } = blackout
         const all = [
-          ...extractBlackoutLeads(leadDump,    campaign, source, 'Lead'),
-          ...extractBlackoutLeads(followupLead, campaign, source, 'Lead'),
-          ...extractBlackoutLeads(appStart,    campaign, source, 'App Start'),
-          ...extractBlackoutLeads(appFollowup, campaign, source, 'App Start'),
+          ...extractBlackoutLeads(leadDump,     campaign, source, 'Lead'),
+          ...extractBlackoutLeads(appStartDump, campaign, source, 'App Start'),
         ]
         // Deduplicate by mobile (last 10 digits), then email
         const seen = new Set()

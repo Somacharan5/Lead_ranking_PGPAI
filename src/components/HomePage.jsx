@@ -50,10 +50,17 @@ export default function HomePage() {
             </div>
           </Link>
 
-          <Link to="/megha" className="block p-4 bg-fuchsia-50 hover:bg-fuchsia-100 border-2 border-fuchsia-200 rounded-lg transition">
+          <Link to="/ishan" className="block p-4 bg-fuchsia-50 hover:bg-fuchsia-100 border-2 border-fuchsia-200 rounded-lg transition">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-fuchsia-700">👤 Megha Saini</span>
-              <span className="text-xs text-fuchsia-500">/megha →</span>
+              <span className="font-semibold text-fuchsia-700">👤 Ishan Ali</span>
+              <span className="text-xs text-fuchsia-500">/ishan →</span>
+            </div>
+          </Link>
+
+          <Link to="/sunny" className="block p-4 bg-rose-50 hover:bg-rose-100 border-2 border-rose-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-rose-700">👤 Sunny Singh</span>
+              <span className="text-xs text-rose-500">/sunny →</span>
             </div>
           </Link>
 

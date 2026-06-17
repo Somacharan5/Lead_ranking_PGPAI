@@ -177,19 +177,20 @@ function spokeToday(lastActivityStr) {
 //                                           hidden until tomorrow
 // ============================================================================
 export function getFreshLeads(leadDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
   const dataRows = leadDumpRows.slice(1)
 
   const allMatching = dataRows.filter(row => {
     const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
-    const counsellor    = (getCol(row, 'BC') || '').trim()
+    const counsellor    = (getCol(row, 'BC') || '').trim().toLowerCase()
     const regOn         = getCol(row, 'BA')
     return (
       userType === 'lead' &&
       paymentStatus !== 'completed' &&
       leadStage === 'untouched' &&
-      counsellor === counsellorName &&
+      counsellor === normName &&
       isYesterdayOrOlder(regOn)
     )
   })
@@ -242,20 +243,21 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 // Score → CF   Priority → CG   (Priority 5 excluded)
 // ============================================================================
 export function getFollowupLeads(leadDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
   const dataRows = leadDumpRows.slice(1)
 
   let spokenTodayCount = 0
   const actionable = []
 
   dataRows.forEach(row => {
-    const counsellor    = (getCol(row, 'BC') || '').trim()
+    const counsellor    = (getCol(row, 'BC') || '').trim().toLowerCase()
     const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
     const subStage      = (getCol(row, 'BE') || '').toLowerCase().trim()
     const lastAct       = getCol(row, 'BK')
 
-    if (counsellor !== counsellorName || userType !== 'lead') return
+    if (counsellor !== normName || userType !== 'lead') return
     if (paymentStatus === 'completed') return
 
     if (spokeToday(lastAct)) {
@@ -312,10 +314,11 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
 //   BG (Counsellor Last Activ) ≠ today   ← lag-window fix
 // ============================================================================
 export function getNewAppStart(appStartDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
   const dataRows = appStartDumpRows.slice(1)
 
   const allMatching = dataRows.filter(row => {
-    const counsellor    = (getCol(row, 'AR') || '').trim()
+    const counsellor    = (getCol(row, 'AR') || '').trim().toLowerCase()
     const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'AT') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
@@ -323,7 +326,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     const appNumber     = parseFloat(getCol(row, 'B')) || 0
     const regOn         = getCol(row, 'Q')
 
-    if (counsellor !== counsellorName)                    return false
+    if (counsellor !== normName)                          return false
     if (appStage !== 'untouched')                         return false
     if (leadStage === 'paid' || leadStage === 'counseled') return false
     if (paymentStatus === 'completed')                    return false
@@ -386,13 +389,14 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
 // Priority 5 (EU) excluded.
 // ============================================================================
 export function getAppFollowup(appStartDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
   const dataRows = appStartDumpRows.slice(1)
 
   let spokenTodayCount = 0
   const actionable = []
 
   dataRows.forEach(row => {
-    const counsellor    = (getCol(row, 'AR') || '').trim()
+    const counsellor    = (getCol(row, 'AR') || '').trim().toLowerCase()
     const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
     const appSubStage   = (getCol(row, 'AV') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'AT') || '').toLowerCase().trim()
@@ -400,7 +404,7 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
     const lastAct       = getCol(row, 'BG')
 
-    if (counsellor !== counsellorName)  return
+    if (counsellor !== normName)  return
     if (paymentStatus === 'completed')  return
     if (source === 'pmax')              return
 
@@ -455,6 +459,7 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
 //   Each group sorted by score desc, preserving table order within group.
 // ============================================================================
 export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
   const DISQUALIFIED = new Set(['not interested', 'not eligible', 'intent dropped'])
 
   // App Start counsellings
@@ -462,12 +467,12 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
   // Anomaly fix: if either stage is a disqualified stage, the lead is NOT counseled regardless.
   const appRows = appStartDumpRows.slice(1)
     .filter(row => {
-      const counsellor    = (getCol(row, 'AR') || '').trim()
+      const counsellor    = (getCol(row, 'AR') || '').trim().toLowerCase()
       const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
       const leadStageAT   = (getCol(row, 'AT') || '').toLowerCase().trim()
       const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
       return (
-        counsellor === counsellorName &&
+        counsellor === normName &&
         (appStage === 'counseled' || leadStageAT === 'counseled') &&
         !DISQUALIFIED.has(appStage) &&
         !DISQUALIFIED.has(leadStageAT) &&
@@ -501,12 +506,12 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
   // Lead counsellings (AG="lead" filter already present — Bug 2 already correct)
   const leadRows = leadDumpRows.slice(1)
     .filter(row => {
-      const counsellor    = (getCol(row, 'BC') || '').trim()
+      const counsellor    = (getCol(row, 'BC') || '').trim().toLowerCase()
       const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
       const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
       const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
       return (
-        counsellor === counsellorName &&
+        counsellor === normName &&
         userType === 'lead' &&
         leadStage === 'counseled' &&
         paymentStatus !== 'completed'
@@ -607,11 +612,24 @@ export function allocateLeads(fresh, followup, newApp, appFollowup, totalTarget 
 // ============================================================================
 // MAIN ENTRY POINT — fetches 2 sheets (was 4)
 // ============================================================================
+async function fetchCached(sheet, range) {
+  try {
+    const params = new URLSearchParams({ action: 'fetch', sheet, range })
+    const r = await fetch(`/api/sheets?${params}`)
+    if (!r.ok) throw new Error(`${r.status}`)
+    const d = await r.json()
+    return d.rows || []
+  } catch {
+    // Fallback: direct Sheets API if server cache is unavailable
+    return fetchSheetData(sheet, range)
+  }
+}
+
 export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, appStartDump, blackoutsRaw] = await Promise.all([
-    fetchSheetData('Lead Dump',          'A:CG'),
-    fetchSheetData('App Start Dump',     'A:EU'),
-    fetchSheetData('Campaign Blackouts', 'A:D').catch(() => []),
+    fetchCached('Lead Dump',          'A:CG'),
+    fetchCached('App Start Dump',     'A:EU'),
+    fetchCached('Campaign Blackouts', 'A:D').catch(() => []),
   ])
 
   const blackouts     = parseBlackouts(blackoutsRaw)

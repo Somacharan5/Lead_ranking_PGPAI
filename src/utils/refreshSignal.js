@@ -16,15 +16,17 @@ export async function getRefreshSignal() {
   }
 }
 
-// Trigger a refresh (admin only) - calls Apps Script web app
+// Trigger a refresh (admin only) - calls Apps Script web app + busts server-side sheet cache
 export async function triggerGlobalRefresh() {
   if (!APPS_SCRIPT_URL) {
     return { success: false, error: 'Apps Script URL not configured' }
   }
-  
+
   try {
     // Use no-cors mode since Apps Script may not return CORS headers
     await fetch(APPS_SCRIPT_URL, { method: 'GET', mode: 'no-cors' })
+    // Also bust the server-side Supabase sheet cache so everyone gets fresh data
+    await fetch('/api/sheets?action=invalidate_all', { method: 'POST' }).catch(() => {})
     return { success: true }
   } catch (error) {
     return { success: false, error: error.message }

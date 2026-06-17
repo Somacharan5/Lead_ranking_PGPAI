@@ -6,3 +6,6 @@ dist
 .DS_Store
 *.log
 .vercel
+
+# Service account key (local dev only — provide via GOOGLE_SERVICE_ACCOUNT_JSON in prod)
+api/sa.json
