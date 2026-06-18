@@ -4,18 +4,37 @@ import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 
 const __dir = dirname(fileURLToPath(import.meta.url))
+
 // Service account credentials: prefer the GOOGLE_SERVICE_ACCOUNT_JSON env var
 // (set this in Vercel). Falls back to a local api/sa.json for local dev — that
 // file holds a private key and is gitignored, never committed.
-const sa = process.env.GOOGLE_SERVICE_ACCOUNT_JSON
-  ? JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
-  : JSON.parse(readFileSync(join(__dir, 'sa.json'), 'utf8'))
+// Loaded lazily so a missing credential returns a clear 500 message via the
+// handler's try/catch instead of crashing the function at module load.
+let _sa = null
+function getServiceAccount() {
+  if (_sa) return _sa
+  if (process.env.GOOGLE_SERVICE_ACCOUNT_JSON) {
+    _sa = JSON.parse(process.env.GOOGLE_SERVICE_ACCOUNT_JSON)
+    return _sa
+  }
+  try {
+    _sa = JSON.parse(readFileSync(join(__dir, 'sa.json'), 'utf8'))
+    return _sa
+  } catch {
+    throw new Error(
+      'Google service account credentials missing. Set the GOOGLE_SERVICE_ACCOUNT_JSON ' +
+      'environment variable in Vercel (Settings → Environment Variables) with the full ' +
+      'service-account JSON, then redeploy.'
+    )
+  }
+}
 
 const ROOT_ID = '0AMdCjnS24RycUk9PVA'
 
 // ── Google JWT auth ───────────────────────────────────────────────────────────
 
 async function getAccessToken() {
+  const sa  = getServiceAccount()
   const now = Math.floor(Date.now() / 1000)
   const hdr = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url')
   const cla = Buffer.from(JSON.stringify({
