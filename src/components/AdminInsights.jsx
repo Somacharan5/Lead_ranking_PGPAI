@@ -394,13 +394,13 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
       empName:      normalizeName(row[3]),
       toNumber:     p,
       callType:     cellText(row[8]),
-      callDate:     row[10],
-      notes:        notesMap[p] || cellText(row[12]),
-      audioUrl:     row[14] || "",
-      stageType:    stageTypeMap[p]  || cellText(row[15]),
-      source:       sourceMap[p]     || cellText(row[19]),
-      leadStage:    leadStageMap[p]  || cellText(row[20]),
-      durationMins: parseDurationMins(row[21] ?? row[9]),
+      callDate:     row[12],
+      notes:        notesMap[p] || cellText(row[14]),
+      audioUrl:     row[16] || "",
+      stageType:    stageTypeMap[p]  || cellText(row[18]),
+      source:       sourceMap[p]     || cellText(row[22]),
+      leadStage:    leadStageMap[p]  || cellText(row[23]),
+      durationMins: parseDurationMins(row[24] ?? row[11]),
       subStage:     subStageMap[p] || "",
     }
   })
@@ -3685,11 +3685,12 @@ export default function AdminInsights() {
         }
 
         const [callsDataRaw, leadRaw] = await Promise.all([
-          fetchCached('Call History updated Daily', 'A2:V'),
+          fetchCached('Call History updated Daily', 'A2:Y'),
           fetchCached('Lead Dump', 'A:CG'),
         ])
-        // Prepend synthetic header so parseCallsHistory's slice(1) works correctly
-        const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Name2","To Name","Country Code","To Number","Call Type","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
+        // Prepend synthetic header so parseCallsHistory's slice(1) works correctly.
+        // Must match the live sheet layout exactly (cols A–Y, 0-indexed).
+        const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Number","To Name","Country Code","To Number","Call Type","Call Method","Call Mode","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Call Transcript","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
         const callsRaw = [CALLS_HEADER, ...callsDataRaw]
         const appRaw = await fetchCached('App Start Dump', 'A:EU').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
@@ -3700,13 +3701,13 @@ export default function AdminInsights() {
         const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
         // Capture diagnostic info: raw row count, date-matched count, latest parsed date in sheet
         const latestParsed = callsDataRaw.reduce((best, row) => {
-          const d = parseDate(row[10])
+          const d = parseDate(row[12])
           return d && (!best || d > best) ? d : best
         }, null)
         if (!cancelled) setDiagInfo({
           rawRows: callsDataRaw.length,
           matched: rows.length,
-          sampleDate: callsDataRaw[0]?.[10] ?? "—",
+          sampleDate: callsDataRaw[0]?.[12] ?? "—",
           latestDate: latestParsed ? latestParsed.toISOString().slice(0, 10) : "—",
         })
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
