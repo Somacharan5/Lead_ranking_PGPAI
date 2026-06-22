@@ -2780,7 +2780,16 @@ Red flag rules:
   if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
   const d   = await r.json()
   const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
-  return robustJSONParse(raw)
+  const parsed = robustJSONParse(raw)
+  // Attach the customer phone number to each red flag via its callIndex,
+  // so admins can look the customer up in the CRM.
+  if (parsed && Array.isArray(parsed.topRedFlags)) {
+    parsed.topRedFlags = parsed.topRedFlags.map(f => ({
+      ...f,
+      customerPhone: transcripts[f.callIndex - 1]?.customerPhone || '',
+    }))
+  }
+  return parsed
 }
 
 async function fetchTranscriptLeadAnalysis(text, leadInfo) {
@@ -3082,6 +3091,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
   const [monthFilter,      setMonthFilter]      = useState(() => propDate.slice(0, 7))
   const [counsellorFilter, setCounsellorFilter] = useState(mainTab !== 'overall' ? mainTab : 'all')
   const [sourceFilter,     setSourceFilter]     = useState('all')
+  const [detailSearch,     setDetailSearch]     = useState('')
   const [viewTab,          setViewTab]          = useState('overview')
 
   const [loading,          setLoading]          = useState(false)
@@ -3116,6 +3126,17 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
     const s = new Set(transcripts.map(t => t.leadInfo?.source).filter(Boolean))
     return [...s].sort()
   }, [transcripts])
+
+  // Detailed-view list: source-filtered transcripts, further narrowed by a
+  // phone-number (or name) search so an admin can read one customer's calls.
+  const detailFiltered = useMemo(() => {
+    const q = detailSearch.trim().toLowerCase()
+    if (!q) return filtered
+    return filtered.filter(t =>
+      (t.customerPhone || '').toLowerCase().includes(q) ||
+      (t.leadInfo?.name || '').toLowerCase().includes(q)
+    )
+  }, [filtered, detailSearch])
 
   // Quick stats from enriched transcript list (no AI needed)
   const quickStats = useMemo(() => {
@@ -3516,6 +3537,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                           <thead>
                             <tr className="bg-gray-50 text-gray-500 uppercase tracking-wide">
                               <th className="px-4 py-2.5 text-left">Customer</th>
+                              <th className="px-4 py-2.5 text-left">Customer Number</th>
                               <th className="px-4 py-2.5 text-left">Counsellor</th>
                               <th className="px-4 py-2.5 text-left">Category</th>
                               <th className="px-4 py-2.5 text-left">Objection / Moment</th>
@@ -3531,6 +3553,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                               return (
                                 <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 align-top">
                                   <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{f.customer}</td>
+                                  <td className="px-4 py-3 text-gray-600 whitespace-nowrap font-mono">{f.customerPhone || '—'}</td>
                                   <td className="px-4 py-3 text-gray-600 whitespace-nowrap">{f.counsellor}</td>
                                   <td className="px-4 py-3">
                                     <span className={`px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${cat}`}>{f.category}</span>
@@ -3605,10 +3628,20 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
           {/* ── DETAILED VIEW ── */}
           {viewTab === 'detailed' && (
             <div className="space-y-3">
-              <div className="text-xs text-gray-400 px-1">
-                {filtered.length} transcripts · click any card to expand — AI analysis runs on first open
+              <div className="relative max-w-xs">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">🔍</span>
+                <input
+                  type="text"
+                  value={detailSearch}
+                  onChange={e => setDetailSearch(e.target.value)}
+                  placeholder="Search by customer number or name…"
+                  className="w-full pl-9 pr-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500/30 focus:border-emerald-400"
+                />
               </div>
-              {filtered.map(t => (
+              <div className="text-xs text-gray-400 px-1">
+                {detailFiltered.length} transcripts{detailSearch.trim() ? ` matching “${detailSearch.trim()}”` : ''} · click any card to expand — AI analysis runs on first open
+              </div>
+              {detailFiltered.map(t => (
                 <TranscriptCard
                   key={t.fileId}
                   t={t}
@@ -3617,6 +3650,11 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                   readText={readCache[t.fileId]}
                 />
               ))}
+              {detailFiltered.length === 0 && (
+                <div className="text-sm text-gray-400 px-1 py-6 text-center">
+                  No transcripts match “{detailSearch.trim()}”.
+                </div>
+              )}
             </div>
           )}
         </>
