@@ -28,7 +28,7 @@ async function fetchSheet(sheetName, range) {
 // Static: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 AC=28 Y=24 V=21 W=22 BF=57 BA=52
 // Dynamic: AF=31 AG=32 AH=33 AI=34 AJ=35 BB=53 BC=54 BD=55 BE=56
 //          BG=58 BH=59 BI=60 BJ=61 BK=62 BL=63 BM=64 BO=66 BP=67 BQ=68
-//          CA=78 CB=79 CC=80 CD=81 CE=82 CF=83 CG=84
+//          Scores: CC=80(Source) CD=81(Recency) CE=82(Stage) CF=83(Organic) CG=84(IG) CH=85(Total) CI=86(Priority)
 
 function buildLeadStatic(row) {
   const email = cell(row, 1).toLowerCase()
@@ -98,23 +98,23 @@ function buildLeadDynamic(row, snapshotDate) {
     app_last_activity_date:      cell(row, 66),  // BO
     notes:                       cell(row, 67),  // BP
     tags:                        cell(row, 68),  // BQ
-    source_score:                cell(row, 78),  // CA
-    recency_score:               cell(row, 79),  // CB
-    stage_score:                 cell(row, 80),  // CC
-    organic_bonus:               cell(row, 81),  // CD
-    ig_bonus:                    cell(row, 82),  // CE
-    total_lead_score:            cell(row, 83),  // CF
-    priority:                    cell(row, 84),  // CG
+    source_score:                cell(row, 80),  // CC
+    recency_score:               cell(row, 81),  // CD
+    stage_score:                 cell(row, 82),  // CE
+    organic_bonus:               cell(row, 83),  // CF
+    ig_bonus:                    cell(row, 84),  // CG
+    total_lead_score:            cell(row, 85),  // CH
+    priority:                    cell(row, 86),  // CI
   }
 }
 
 // ── App Start Dump column indices (0-based) ──────────────────────────────────
-// Static: A=0(AppNum) M=12 N=13 O=14 P=15 Q=16 S=18 T=19 U=20 V=21 W=22 X=23 BW=74 BX=75 AP=41
+// Static: A=0(AppNum) M=12 N=13 O=14 P=15 Q=16 S=18 T=19 U=20 V=21 W=22 X=23 BY=76(State) BZ=77(City) AP=41
 // Dynamic: B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 J=9 L=11
 //          AO=40 AR=43 AS=44 AT=45 AU=46 AV=47 AW=48 AX=49 AY=50 AZ=51
 //          BA=52 BB=53 BC=54 BD=55 BE=56 BF=57 BG=58 BH=59 BI=60 BK=62
 //          BL=63 BM=64 BN=65 BO=66 BP=67
-//          EQ=146 ER=147 ES=148 ET=149 EU=150
+//          ES=148 ET=149 EU=150 EV=151(Total Score) EW=152(Priority App Start)
 
 function buildAppStatic(row) {
   const appNum = cell(row, 0)
@@ -130,8 +130,8 @@ function buildAppStatic(row) {
     primary_source:     cell(row, 21),
     primary_medium:     cell(row, 22),
     primary_campaign:   cell(row, 23),
-    city:               cell(row, 75),  // BX
-    state:              cell(row, 74),  // BW
+    city:               cell(row, 77),  // BZ
+    state:              cell(row, 76),  // BY
     program:            cell(row, 41),  // AP
     registered_on:      cell(row, 16),  // Q
     extra_data: {
@@ -187,11 +187,11 @@ function buildAppDynamic(row, snapshotDate) {
     video_link:                  cell(row, 65),  // BN
     application_tags:            cell(row, 66),  // BO
     tags:                        cell(row, 67),  // BP
-    mu_baat_link:                cell(row, 146), // EQ
-    mu_baat_result:              cell(row, 147), // ER
-    mu_baat_report:              cell(row, 148), // ES
-    total_score_formula:         cell(row, 149), // ET
-    priority_app_start:          cell(row, 150), // EU
+    mu_baat_link:                cell(row, 148), // ES
+    mu_baat_result:              cell(row, 149), // ET
+    mu_baat_report:              cell(row, 150), // EU
+    total_score_formula:         cell(row, 151), // EV (header "Lead Score")
+    priority_app_start:          cell(row, 152), // EW (header "Priority App Start")
   }
 }
 
@@ -228,8 +228,8 @@ export default async function handler(req, res) {
     log.push(`Snapshot started for ${istDate}`)
 
     // ── 1. Fetch Lead Dump ────────────────────────────────────────────────────
-    log.push('Fetching Lead Dump A:CG…')
-    const leadRows = await fetchSheet('Lead Dump', 'A:CG')
+    log.push('Fetching Lead Dump A:CI…')
+    const leadRows = await fetchSheet('Lead Dump', 'A:CI')
     log.push(`Lead Dump: ${leadRows.length} rows`)
 
     // Build static + dynamic batches; deduplicate by email (keep last occurrence)
@@ -248,8 +248,8 @@ export default async function handler(req, res) {
     log.push(`lead_history: upserted ${ldCount}`)
 
     // ── 2. Fetch App Start Dump ───────────────────────────────────────────────
-    log.push('Fetching App Start Dump A:EU…')
-    const appRows = await fetchSheet('App Start Dump', 'A:EU')
+    log.push('Fetching App Start Dump A:EW…')
+    const appRows = await fetchSheet('App Start Dump', 'A:EW')
     log.push(`App Start Dump: ${appRows.length} rows`)
 
     // Deduplicate by application_number (keep last occurrence)

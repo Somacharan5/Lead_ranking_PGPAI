@@ -12,17 +12,17 @@ import { fetchSheetData, getCol } from './sheetsApi'
 //   H   Primary Medium                BE  Lead Sub Stage
 //   I   Primary Campaign              BK  Counsellor Last Activity Date
 //                                     BP  Notes
-//                                     CF  Total Lead Score
-//                                     CG  Priority
+//                                     CH  Total Lead Score   (moved from CF)
+//                                     CI  Priority           (moved from CG)
 //
 // APP START DUMP (new + followup app starts in one sheet):
-//   B   Application Number            AT  Lead Stage
+//   A   Application Number (string)   AT  Lead Stage
 //   C   Payment Status                AU  Application Stage
 //   M   Name                          AV  Application Sub Stage
 //   N   Email                         BG  Counsellor Last Activity Date
 //   O   Mobile                        BM  Notes
-//   Q   Registered On                 ET  Total Score
-//   S   Source                        EU  Followup Priority
+//   Q   Registered On                 EV  Total Score        (moved from ET; header "Lead Score")
+//   S   Source                        EW  Followup Priority  (moved from EU; header "Priority App Start")
 //   T   Medium
 //   U   Campaign
 //   W   Primary Medium
@@ -215,7 +215,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     stage:                  getCol(row, 'BD'),
     subStage:               getCol(row, 'BE'),
     notes:                  getCol(row, 'BP'),
-    score:                  parseFloat(getCol(row, 'CF')) || 0,
+    score:                  parseFloat(getCol(row, 'CH')) || 0,
     counsellor:             getCol(row, 'BC'),
     priority:               '',
     category:               'Fresh Lead',
@@ -240,7 +240,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 //     AND BE ∈ [Call later, Disconnected, DNP, DNP2, Not Reachable]
 //     AND (BK empty OR BK ≤ yesterday)
 //
-// Score → CF   Priority → CG   (Priority 5 excluded)
+// Score → CH   Priority → CI   (Priority 5 excluded)
 // ============================================================================
 export function getFollowupLeads(leadDumpRows, counsellorName) {
   const normName = counsellorName.toLowerCase()
@@ -290,9 +290,9 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
       stage:                  getCol(row, 'BD'),
       subStage:               getCol(row, 'BE'),
       notes:                  getCol(row, 'BP'),
-      score:                  parseFloat(getCol(row, 'CF')) || 0,
+      score:                  parseFloat(getCol(row, 'CH')) || 0,
       counsellor:             getCol(row, 'BC'),
-      priority:               getCol(row, 'CG'),
+      priority:               getCol(row, 'CI'),
       category:               'Followup Lead',
     }))
     .filter(lead => (lead.priority || '').toLowerCase() !== 'priority 5')
@@ -323,15 +323,15 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     const leadStage     = (getCol(row, 'AT') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
-    const appNumber     = parseFloat(getCol(row, 'B')) || 0
+    const hasAppNumber  = (getCol(row, 'A')  || '').trim() !== ''
     const regOn         = getCol(row, 'Q')
 
     if (counsellor !== normName)                          return false
     if (appStage !== 'untouched')                         return false
     if (leadStage === 'paid' || leadStage === 'counseled') return false
     if (paymentStatus === 'completed')                    return false
-    // pmax excluded unless Application Number > 0
-    if (source === 'pmax' && appNumber <= 0)     return false
+    // pmax excluded unless the row has an Application Number (col A)
+    if (source === 'pmax' && !hasAppNumber)      return false
 
     return isYesterdayOrOlder(regOn)
   })
@@ -357,7 +357,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     stage:                  getCol(row, 'AU'),
     subStage:               getCol(row, 'AV'),
     notes:                  getCol(row, 'BM'),
-    score:                  parseFloat(getCol(row, 'ET')) || 0,
+    score:                  parseFloat(getCol(row, 'EV')) || 0,
     counsellor:             getCol(row, 'AR'),
     priority:               '',
     category:               'New App Start',
@@ -386,7 +386,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
 // Lead Stage path:
 //   AT = "Counseled" AND BG ≥ 3 days ago
 //
-// Priority 5 (EU) excluded.
+// Priority 5 (EW) excluded.
 // ============================================================================
 export function getAppFollowup(appStartDumpRows, counsellorName) {
   const normName = counsellorName.toLowerCase()
@@ -442,9 +442,9 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
       stage:                  getCol(row, 'AU'),
       subStage:               getCol(row, 'AV'),
       notes:                  getCol(row, 'BM'),
-      score:                  parseFloat(getCol(row, 'ET')) || 0,
+      score:                  parseFloat(getCol(row, 'EV')) || 0,
       counsellor:             getCol(row, 'AR'),
-      priority:               getCol(row, 'EU'),
+      priority:               getCol(row, 'EW'),
       category:               'App Followup',
     }))
     .filter(lead => (lead.priority || '').toLowerCase() !== 'priority 5')
@@ -494,9 +494,9 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
         stage:                  appStage === 'counseled' ? getCol(row, 'AU') : getCol(row, 'AT'),
         subStage:               getCol(row, 'AV'),
         notes:                  getCol(row, 'BM'),
-        score:                  parseFloat(getCol(row, 'ET')) || 0,
+        score:                  parseFloat(getCol(row, 'EV')) || 0,
         counsellor:             getCol(row, 'AR'),
-        priority:               getCol(row, 'EU'),
+        priority:               getCol(row, 'EW'),
         category:               'App Counselling',
         bucket:                 (getCol(row, 'AV') || '').toLowerCase().trim(),
       }
@@ -530,9 +530,9 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
       stage:                  getCol(row, 'BD'),
       subStage:               getCol(row, 'BE'),
       notes:                  getCol(row, 'BP'),
-      score:                  parseFloat(getCol(row, 'CF')) || 0,
+      score:                  parseFloat(getCol(row, 'CH')) || 0,
       counsellor:             getCol(row, 'BC'),
-      priority:               getCol(row, 'CG'),
+      priority:               getCol(row, 'CI'),
       category:               'Lead Counselling',
       bucket:                 (getCol(row, 'BE') || '').toLowerCase().trim(),
     }))
@@ -627,8 +627,8 @@ async function fetchCached(sheet, range) {
 
 export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, appStartDump, blackoutsRaw] = await Promise.all([
-    fetchCached('Lead Dump',          'A:CG'),
-    fetchCached('App Start Dump',     'A:EU'),
+    fetchCached('Lead Dump',          'A:CI'),
+    fetchCached('App Start Dump',     'A:EW'),
     fetchCached('Campaign Blackouts', 'A:D').catch(() => []),
   ])
 

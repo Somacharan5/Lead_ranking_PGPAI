@@ -594,8 +594,8 @@ function BlackoutListPage({ blackouts, loading, onBack, onSelect, onReload, onBl
 
 function extractBlackoutLeads(rows, campaign, source, type) {
   const isLead    = type === 'Lead'
-  // Lead Dump (A:CG): H=7 campaign, G=6 source, A=0 name, B=1 email, C=2 mobile, BC=54 counsellor, BD=55 stage, BA=52 registered
-  // App Start Dump (A:EU): W=22 campaign, S=18 source, M=12 name, N=13 email, O=14 mobile, AR=43 counsellor, AU=46 stage, Q=16 registered
+  // Lead Dump (A:CI): H=7 campaign, G=6 source, A=0 name, B=1 email, C=2 mobile, BC=54 counsellor, BD=55 stage, BA=52 registered
+  // App Start Dump (A:EW): W=22 campaign, S=18 source, M=12 name, N=13 email, O=14 mobile, AR=43 counsellor, AU=46 stage, Q=16 registered
   const campIdx   = isLead ? 7  : 22
   const srcIdx    = isLead ? 6  : 18
   const nameIdx   = isLead ? 0  : 12
@@ -643,8 +643,8 @@ function BlackoutDetailPage({ blackout, onBack }) {
           return d.rows || []
         }
         const [leadDump, appStartDump] = await Promise.all([
-          fetchCached('Lead Dump',      'A:CG'),
-          fetchCached('App Start Dump', 'A:EU'),
+          fetchCached('Lead Dump',      'A:CI'),
+          fetchCached('App Start Dump', 'A:EW'),
         ])
         const { campaign, source } = blackout
         const all = [
