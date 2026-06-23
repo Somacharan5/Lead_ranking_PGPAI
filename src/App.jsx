@@ -31,6 +31,9 @@ function App() {
           <Route path="/drishti" element={<Dashboard counsellorName="Drishti Majumdar" isAdmin={false} />} />
           <Route path="/ishan" element={<Dashboard counsellorName="Ishan Ali" isAdmin={false} />} />
           <Route path="/sunny" element={<Dashboard counsellorName="Sunny Singh" isAdmin={false} />} />
+          <Route path="/aniket" element={<Dashboard counsellorName="Aniket Singh" isAdmin={false} />} />
+          <Route path="/devam" element={<Dashboard counsellorName="Devam Chandna" isAdmin={false} />} />
+          <Route path="/aprajita" element={<Dashboard counsellorName="Aprajita" isAdmin={false} />} />
           <Route path="/admin" element={<Dashboard counsellorName="Jasmeet Kaur" isAdmin={true} />} />
           <Route path="/admin/overview" element={<AdminOverview />} />
           <Route path="*" element={<Navigate to="/" />} />

@@ -64,6 +64,27 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link to="/aniket" className="block p-4 bg-cyan-50 hover:bg-cyan-100 border-2 border-cyan-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-cyan-700">👤 Aniket Singh</span>
+              <span className="text-xs text-cyan-500">/aniket →</span>
+            </div>
+          </Link>
+
+          <Link to="/devam" className="block p-4 bg-violet-50 hover:bg-violet-100 border-2 border-violet-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-violet-700">👤 Devam Chandna</span>
+              <span className="text-xs text-violet-500">/devam →</span>
+            </div>
+          </Link>
+
+          <Link to="/aprajita" className="block p-4 bg-pink-50 hover:bg-pink-100 border-2 border-pink-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-pink-700">👤 Aprajita</span>
+              <span className="text-xs text-pink-500">/aprajita →</span>
+            </div>
+          </Link>
+
           <Link to="/admin" className="block p-4 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 rounded-lg transition">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-amber-700">👨‍💼 Admin — Detailed View</span>
