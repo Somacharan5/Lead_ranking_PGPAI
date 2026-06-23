@@ -5,7 +5,7 @@ import { triggerGlobalRefresh } from '../utils/refreshSignal'
 import AdminInsights from './AdminInsights'
 import TranscriptionAnalysis from './TranscriptionAnalysis'
 
-const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Ishan Ali', 'Sunny Singh']
+const COUNSELLORS = ['Jasmeet Kaur', 'Komal Pandey', 'Prerna Kaushik', 'Sanjana', 'Drishti Majumdar', 'Ishan Ali', 'Sunny Singh', 'Aniket Singh', 'Devam Chandna', 'Aprajita']
 
 const SECTION_META = [
   { key: 'newAppStart',   label: '📝 New App',      color: 'purple' },

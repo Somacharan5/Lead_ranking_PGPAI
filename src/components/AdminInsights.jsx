@@ -18,6 +18,9 @@ const MAIN_COUNSELLORS = [
   { key: "Drishti Majumdar", short: "Drishti",  color: "#f59e0b", bg: "#fffbeb", ring: "#fcd34d" },
   { key: "Ishan Ali",        short: "Ishan",    color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
   { key: "Sunny Singh",      short: "Sunny",    color: "#f43f5e", bg: "#fff1f2", ring: "#fda4af" },
+  { key: "Aniket Singh",     short: "Aniket",   color: "#06b6d4", bg: "#ecfeff", ring: "#67e8f9" },
+  { key: "Devam Chandna",    short: "Devam",    color: "#6366f1", bg: "#eef2ff", ring: "#a5b4fc" },
+  { key: "Aprajita",         short: "Aprajita", color: "#10b981", bg: "#ecfdf5", ring: "#6ee7b7" },
 ]
 const ALL_COLS = [
   ...MAIN_COUNSELLORS,
@@ -45,6 +48,15 @@ const NAME_MAP = {
   "Sunny Singh":      "Sunny Singh",
   "Sunny":            "Sunny Singh",
   "SUNNY":            "Sunny Singh",
+  "Aniket Singh":     "Aniket Singh",
+  "Aniket":           "Aniket Singh",
+  "ANIKET":           "Aniket Singh",
+  "Aniketh":          "Aniket Singh",
+  "Devam Chandna":    "Devam Chandna",
+  "Devam":            "Devam Chandna",
+  "DEVAM":            "Devam Chandna",
+  "Aprajita":         "Aprajita",
+  "APRAJITA":         "Aprajita",
 }
 
 const SECTIONS = [
