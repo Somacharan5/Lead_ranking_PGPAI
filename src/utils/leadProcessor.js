@@ -40,6 +40,36 @@ const APP_COUNSELED_SUBSTAGES   = new Set(['hot', 'warm', 'cold'])
 const APP_NCE_SUBSTAGES         = new Set(['call later', 'dnp', 'dnp2'])
 
 // ============================================================================
+// SOURCE EXCLUSIONS — applied to every section, both dumps, every counsellor
+// ============================================================================
+//
+// Partner sources that produce overwhelmingly junk leads. Eliminated entirely
+// so counsellors never spend time on them. Match is case-insensitive, so
+// "careerguide"/"Careerguide" and "Collegeoutreach"/"CollegeOutreach" collapse.
+const JUNK_SOURCES = new Set([
+  'collegedunia',
+  'collegehai',
+  'college_kampus',
+  'collegeoutreach',
+  'careerguide',
+  'careermantra',
+])
+function isJunkSource(source) {
+  return JUNK_SOURCES.has(String(source || '').trim().toLowerCase())
+}
+
+// pmax is paid traffic of mixed intent. Keep it ONLY for higher-intent
+// applicants who have filled at least 20% of the application form.
+// App Start Dump col B ("Application Status") holds the form-completion %
+// (0 / 30 / 60 / 70 / 90 / 100). Lead Dump pmax rows have no form → 0% → always
+// excluded (call pmaxBlocked without a formPct).
+const PMAX_MIN_FORM_PCT = 20
+function pmaxBlocked(source, formPct) {
+  if (String(source || '').trim().toLowerCase() !== 'pmax') return false
+  return !(Number(formPct) >= PMAX_MIN_FORM_PCT)
+}
+
+// ============================================================================
 // CAMPAIGN BLACKOUT HELPERS
 // ============================================================================
 
@@ -185,12 +215,15 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
     const counsellor    = (getCol(row, 'BC') || '').trim().toLowerCase()
+    const source        = getCol(row, 'G')
     const regOn         = getCol(row, 'BA')
     return (
       userType === 'lead' &&
       paymentStatus !== 'completed' &&
       leadStage === 'untouched' &&
       counsellor === normName &&
+      !isJunkSource(source) &&
+      !pmaxBlocked(source) &&
       isYesterdayOrOlder(regOn)
     )
   })
@@ -255,10 +288,12 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
     const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
     const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
     const subStage      = (getCol(row, 'BE') || '').toLowerCase().trim()
+    const source        = getCol(row, 'G')
     const lastAct       = getCol(row, 'BK')
 
     if (counsellor !== normName || userType !== 'lead') return
     if (paymentStatus === 'completed') return
+    if (isJunkSource(source) || pmaxBlocked(source)) return
 
     if (spokeToday(lastAct)) {
       if (leadStage === 'counseled' || leadStage === 'no contact established') {
@@ -309,7 +344,8 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
 //   AU (Application Stage) = "Untouched"
 //   AT (Lead Stage)        ≠ "Paid" AND ≠ "Counseled"
 //   C  (Payment Status)    ≠ "Completed"
-//   S  (Source)            ≠ "pmax"  — EXCEPT if pmax AND B (App Number) > 0
+//   S  (Source)            not a junk partner source (Collegedunia, etc.)
+//   S  (Source)            ≠ "pmax"  — EXCEPT if B (form-completion %) ≥ 20
 //   Q  (Registered On)     ≤ yesterday
 //   BG (Counsellor Last Activ) ≠ today   ← lag-window fix
 // ============================================================================
@@ -323,15 +359,16 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     const leadStage     = (getCol(row, 'AT') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
-    const hasAppNumber  = (getCol(row, 'A')  || '').trim() !== ''
+    const formPct       = parseFloat(getCol(row, 'B')) || 0
     const regOn         = getCol(row, 'Q')
 
     if (counsellor !== normName)                          return false
     if (appStage !== 'untouched')                         return false
     if (leadStage === 'paid' || leadStage === 'counseled') return false
     if (paymentStatus === 'completed')                    return false
-    // pmax excluded unless the row has an Application Number (col A)
-    if (source === 'pmax' && !hasAppNumber)      return false
+    if (isJunkSource(source))                             return false
+    // pmax excluded unless the applicant filled ≥20% of the form (col B)
+    if (pmaxBlocked(source, formPct))                     return false
 
     return isYesterdayOrOlder(regOn)
   })
@@ -372,7 +409,8 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
 //
 // PRE-FILTERS (applied to all paths):
 //   C (Payment Status) ≠ "Completed"
-//   S (Source)         ≠ "pmax"
+//   S (Source)         not a junk partner source (Collegedunia, etc.)
+//   S (Source)         ≠ "pmax"  — EXCEPT if B (form-completion %) ≥ 20
 //   AR (Counsellor)    = [logged-in counsellor]
 //
 // Counseled path:
@@ -402,11 +440,13 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
     const leadStage     = (getCol(row, 'AT') || '').toLowerCase().trim()
     const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
     const source        = (getCol(row, 'S')  || '').toLowerCase().trim()
+    const formPct       = parseFloat(getCol(row, 'B')) || 0
     const lastAct       = getCol(row, 'BG')
 
     if (counsellor !== normName)  return
     if (paymentStatus === 'completed')  return
-    if (source === 'pmax')              return
+    if (isJunkSource(source))           return
+    if (pmaxBlocked(source, formPct))   return
 
     if (spokeToday(lastAct)) {
       if (
@@ -471,6 +511,8 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
       const appStage      = (getCol(row, 'AU') || '').toLowerCase().trim()
       const leadStageAT   = (getCol(row, 'AT') || '').toLowerCase().trim()
       const paymentStatus = (getCol(row, 'C')  || '').toLowerCase().trim()
+      // NOTE: junk-source / pmax filters deliberately NOT applied here — a lead
+      // already counseled must remain in My Counselling history regardless of source.
       return (
         counsellor === normName &&
         (appStage === 'counseled' || leadStageAT === 'counseled') &&
@@ -510,6 +552,8 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
       const userType      = (getCol(row, 'AG') || '').toLowerCase().trim()
       const leadStage     = (getCol(row, 'BD') || '').toLowerCase().trim()
       const paymentStatus = (getCol(row, 'AJ') || '').toLowerCase().trim()
+      // NOTE: junk-source / pmax filters deliberately NOT applied here — a lead
+      // already counseled must remain in My Counselling history regardless of source.
       return (
         counsellor === normName &&
         userType === 'lead' &&

@@ -85,6 +85,13 @@ export default function HomePage() {
             </div>
           </Link>
 
+          <Link to="/simran" className="block p-4 bg-sky-50 hover:bg-sky-100 border-2 border-sky-200 rounded-lg transition">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-sky-700">👤 Simran Mishra</span>
+              <span className="text-xs text-sky-500">/simran →</span>
+            </div>
+          </Link>
+
           <Link to="/admin" className="block p-4 bg-amber-50 hover:bg-amber-100 border-2 border-amber-200 rounded-lg transition">
             <div className="flex items-center justify-between">
               <span className="font-semibold text-amber-700">👨‍💼 Admin — Detailed View</span>

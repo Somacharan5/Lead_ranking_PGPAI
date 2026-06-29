@@ -10,61 +10,101 @@ import {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const MAIN_COUNSELLORS = [
-  { key: "Jasmeet Kaur",   short: "Jasmeet", color: "#3b82f6", bg: "#eff6ff", ring: "#93c5fd" },
-  { key: "Komal Pandey",   short: "Komal",   color: "#8b5cf6", bg: "#f5f3ff", ring: "#c4b5fd" },
-  { key: "Prerna Kaushik", short: "Prerna",  color: "#ec4899", bg: "#fdf2f8", ring: "#f9a8d4" },
+  { key: "Jasmeet Kaur", short: "Jasmeet", color: "#3b82f6", bg: "#eff6ff", ring: "#93c5fd" },
+  { key: "Komal Pandey", short: "Komal", color: "#8b5cf6", bg: "#f5f3ff", ring: "#c4b5fd" },
+  { key: "Prerna Kaushik", short: "Prerna", color: "#ec4899", bg: "#fdf2f8", ring: "#f9a8d4" },
   // TODO: update key values to match exact CRM column U / column AR values once confirmed
-  { key: "Sanjana",          short: "Sanjana",  color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
-  { key: "Drishti Majumdar", short: "Drishti",  color: "#f59e0b", bg: "#fffbeb", ring: "#fcd34d" },
-  { key: "Ishan Ali",        short: "Ishan",    color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
-  { key: "Sunny Singh",      short: "Sunny",    color: "#f43f5e", bg: "#fff1f2", ring: "#fda4af" },
-  { key: "Aniket Singh",     short: "Aniket",   color: "#06b6d4", bg: "#ecfeff", ring: "#67e8f9" },
-  { key: "Devam Chandna",    short: "Devam",    color: "#6366f1", bg: "#eef2ff", ring: "#a5b4fc" },
-  { key: "Aprajita",         short: "Aprajita", color: "#10b981", bg: "#ecfdf5", ring: "#6ee7b7" },
+  { key: "Sanjana", short: "Sanjana", color: "#14b8a6", bg: "#f0fdfa", ring: "#5eead4" },
+  { key: "Drishti Majumdar", short: "Drishti", color: "#f59e0b", bg: "#fffbeb", ring: "#fcd34d" },
+  { key: "Ishan Ali", short: "Ishan", color: "#d946ef", bg: "#fdf4ff", ring: "#e879f9" },
+  { key: "Sunny Singh", short: "Sunny", color: "#f43f5e", bg: "#fff1f2", ring: "#fda4af" },
+  { key: "Aniket Singh", short: "Aniket", color: "#06b6d4", bg: "#ecfeff", ring: "#67e8f9" },
+  { key: "Devam Chandna", short: "Devam", color: "#6366f1", bg: "#eef2ff", ring: "#a5b4fc" },
+  { key: "Aprajita", short: "Aprajita", color: "#10b981", bg: "#ecfdf5", ring: "#6ee7b7" },
+  { key: "Simran Mishra", short: "Simran", color: "#0ea5e9", bg: "#f0f9ff", ring: "#7dd3fc" },
 ]
-const ALL_COLS = [
-  ...MAIN_COUNSELLORS,
-  { key: "Others", short: "Others", color: "#94a3b8", bg: "#f8fafc", ring: "#cbd5e1" },
+// "Others" is only ever used for genuinely blank/garbage counsellor cells.
+// Any real counsellor name found in the data gets its own column (see orderCols).
+const OTHERS_COL = { key: "Others", short: "Others", color: "#94a3b8", bg: "#f8fafc", ring: "#cbd5e1" }
+const KNOWN_BY_KEY = Object.fromEntries(MAIN_COUNSELLORS.map(c => [c.key, c]))
+
+// Deterministic palette for counsellors not in the known list above, so a given
+// name always renders with the same colour everywhere.
+const EXTRA_PALETTE = [
+  { color: "#0ea5e9", bg: "#f0f9ff", ring: "#7dd3fc" },
+  { color: "#a855f7", bg: "#faf5ff", ring: "#d8b4fe" },
+  { color: "#ef4444", bg: "#fef2f2", ring: "#fca5a5" },
+  { color: "#84cc16", bg: "#f7fee7", ring: "#bef264" },
+  { color: "#f97316", bg: "#fff7ed", ring: "#fdba74" },
+  { color: "#0d9488", bg: "#f0fdfa", ring: "#5eead4" },
+  { color: "#eab308", bg: "#fefce8", ring: "#fde047" },
+  { color: "#7c3aed", bg: "#f5f3ff", ring: "#c4b5fd" },
 ]
 
+// Column descriptor for any counsellor key (known, unknown, or "Others").
+function makeCol(key) {
+  if (key === "Others") return OTHERS_COL
+  if (KNOWN_BY_KEY[key]) return KNOWN_BY_KEY[key]
+  const pal = EXTRA_PALETTE[parseInt(hashText(key), 36) % EXTRA_PALETTE.length] || EXTRA_PALETTE[0]
+  return { key, short: key.split(/\s+/)[0], ...pal }
+}
+
+// Build the ordered column list from whatever counsellor names appear in the data:
+// known counsellors first (in canonical order), then any extra real names found
+// (alphabetical), and "Others" last — only if blank cells actually exist.
+function orderCols(keys) {
+  const present = new Set([].concat(...keys).filter(Boolean))
+  const known = MAIN_COUNSELLORS.filter(c => present.has(c.key))
+  const extras = [...present]
+    .filter(k => k !== "Others" && !KNOWN_BY_KEY[k])
+    .sort()
+    .map(makeCol)
+  const cols = [...known, ...extras]
+  if (present.has("Others")) cols.push(OTHERS_COL)
+  return cols
+}
+
 const NAME_MAP = {
-  "Jasmeet Kaur":   "Jasmeet Kaur",
-  "Jasmeet":        "Jasmeet Kaur",
-  "KOMAL":          "Komal Pandey",
-  "Komal":          "Komal Pandey",
-  "Komal Pandey":   "Komal Pandey",
-  "Prerna":         "Prerna Kaushik",
+  "Jasmeet Kaur": "Jasmeet Kaur",
+  "Jasmeet": "Jasmeet Kaur",
+  "KOMAL": "Komal Pandey",
+  "Komal": "Komal Pandey",
+  "Komal Pandey": "Komal Pandey",
+  "Prerna": "Prerna Kaushik",
   "Prerna Kaushik": "Prerna Kaushik",
-  "PRERNA":         "Prerna Kaushik",
+  "PRERNA": "Prerna Kaushik",
   // TODO: update these to match exact CRM column values once confirmed
-  "Sanjana":          "Sanjana",
-  "SANJANA":          "Sanjana",
+  "Sanjana": "Sanjana",
+  "SANJANA": "Sanjana",
   "Drishti Majumdar": "Drishti Majumdar",
-  "Drishti":          "Drishti Majumdar",
-  "DRISHTI":          "Drishti Majumdar",
-  "Ishan Ali":        "Ishan Ali",
-  "Ishan":            "Ishan Ali",
-  "ISHAN":            "Ishan Ali",
-  "Sunny Singh":      "Sunny Singh",
-  "Sunny":            "Sunny Singh",
-  "SUNNY":            "Sunny Singh",
-  "Aniket Singh":     "Aniket Singh",
-  "Aniket":           "Aniket Singh",
-  "ANIKET":           "Aniket Singh",
-  "Aniketh":          "Aniket Singh",
-  "Devam Chandna":    "Devam Chandna",
-  "Devam":            "Devam Chandna",
-  "DEVAM":            "Devam Chandna",
-  "Aprajita":         "Aprajita",
-  "APRAJITA":         "Aprajita",
+  "Drishti": "Drishti Majumdar",
+  "DRISHTI": "Drishti Majumdar",
+  "Ishan Ali": "Ishan Ali",
+  "Ishan": "Ishan Ali",
+  "ISHAN": "Ishan Ali",
+  "Sunny Singh": "Sunny Singh",
+  "Sunny": "Sunny Singh",
+  "SUNNY": "Sunny Singh",
+  "Aniket Singh": "Aniket Singh",
+  "Aniket": "Aniket Singh",
+  "ANIKET": "Aniket Singh",
+  "Aniketh": "Aniket Singh",
+  "Devam Chandna": "Devam Chandna",
+  "Devam": "Devam Chandna",
+  "DEVAM": "Devam Chandna",
+  "Aprajita": "Aprajita",
+  "APRAJITA": "Aprajita",
+  "Simran Mishra": "Simran Mishra",
+  "Simran": "Simran Mishra",
+  "SIMRAN": "Simran Mishra",
 }
 
 const SECTIONS = [
-  { key: "all",    label: "All sections",       val: null            },
-  { key: "appFU",  label: "App Start Followup", val: "App Followup"  },
-  { key: "appNew", label: "App Start New",       val: "App Start New" },
-  { key: "leadFU", label: "Followup Leads",      val: "Followup Lead" },
-  { key: "fresh",  label: "Fresh Leads",          val: "Fresh Lead"   },
+  { key: "all", label: "All sections", val: null },
+  { key: "appFU", label: "App Start Followup", val: "App Followup" },
+  { key: "appNew", label: "App Start New", val: "App Start New" },
+  { key: "leadFU", label: "Followup Leads", val: "Followup Lead" },
+  { key: "fresh", label: "Fresh Leads", val: "Fresh Lead" },
 ]
 
 const STAGE_ORDER = [
@@ -73,36 +113,36 @@ const STAGE_ORDER = [
 ]
 
 const STAGE_COLORS = {
-  "Counseled":                "#22c55e",
-  "No Contact Established":   "#f59e0b",
-  "Not interested":           "#ef4444",
-  "Not Eligible":             "#6b7280",
-  "Untouched":                "#3b82f6",
-  "Intent dropped":           "#8b5cf6",
+  "Counseled": "#22c55e",
+  "No Contact Established": "#f59e0b",
+  "Not interested": "#ef4444",
+  "Not Eligible": "#6b7280",
+  "Untouched": "#3b82f6",
+  "Intent dropped": "#8b5cf6",
 }
 
 const CALL_TYPE_COLORS = {
   Outgoing: "#3b82f6",
   Incoming: "#22c55e",
-  Missed:   "#ef4444",
+  Missed: "#ef4444",
   Rejected: "#f97316",
 }
 
 const PIPELINE_BUCKETS = [
-  { key: "hot",  label: "Hot",  color: "#ef4444", bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200" },
-  { key: "warm", label: "Warm", color: "#f59e0b", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
-  { key: "cold", label: "Cold", color: "#64748b", bg: "bg-slate-50",  text: "text-slate-700",  border: "border-slate-200" },
+  { key: "hot", label: "Hot", color: "#ef4444", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+  { key: "warm", label: "Warm", color: "#f59e0b", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+  { key: "cold", label: "Cold", color: "#64748b", bg: "bg-slate-50", text: "text-slate-700", border: "border-slate-200" },
 ]
 
 const URGENCY = {
-  today:       { label: "Today",     bg: "bg-red-50",    text: "text-red-700",    border: "border-red-200"   },
-  "this-week": { label: "This week", bg: "bg-amber-50",  text: "text-amber-700",  border: "border-amber-200" },
-  low:         { label: "Low",       bg: "bg-gray-50",   text: "text-gray-600",   border: "border-gray-200"  },
+  today: { label: "Today", bg: "bg-red-50", text: "text-red-700", border: "border-red-200" },
+  "this-week": { label: "This week", bg: "bg-amber-50", text: "text-amber-700", border: "border-amber-200" },
+  low: { label: "Low", bg: "bg-gray-50", text: "text-gray-600", border: "border-gray-200" },
 }
 const SENTIMENT = {
-  positive: { bg: "bg-green-50",  text: "text-green-700",  label: "Positive" },
-  mixed:    { bg: "bg-amber-50",  text: "text-amber-700",  label: "Mixed"    },
-  negative: { bg: "bg-red-50",    text: "text-red-700",    label: "Negative" },
+  positive: { bg: "bg-green-50", text: "text-green-700", label: "Positive" },
+  mixed: { bg: "bg-amber-50", text: "text-amber-700", label: "Mixed" },
+  negative: { bg: "bg-red-50", text: "text-red-700", label: "Negative" },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,17 +153,19 @@ function normalizeName(raw) {
   const t = cellText(raw)
   if (!t) return null
   const titled = t.replace(/\b\w/g, c => c.toUpperCase())
-  return NAME_MAP[titled] || NAME_MAP[t] || "Others"
+  // Canonicalise known aliases; otherwise keep the real (title-cased) name so the
+  // counsellor gets their own column instead of being lumped into "Others".
+  return NAME_MAP[titled] || NAME_MAP[t] || titled
 }
 
 function inferSection(stageType, leadStage) {
   const isUntouched = cellText(leadStage) === "Untouched"
-  if (stageType === "Lead")                                  return isUntouched ? "Fresh Lead"    : "Followup Lead"
+  if (stageType === "Lead") return isUntouched ? "Fresh Lead" : "Followup Lead"
   if (stageType === "App Start" || stageType === "Paid App") return isUntouched ? "App Start New" : "App Followup"
   return "Unknown"
 }
 
-const MONTHS = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 
 function parseDate(val) {
   if (!val && val !== 0) return null
@@ -142,8 +184,8 @@ function parseDate(val) {
 
 function sameDay(d1, d2) {
   return d1.getFullYear() === d2.getFullYear() &&
-         d1.getMonth()    === d2.getMonth()    &&
-         d1.getDate()     === d2.getDate()
+    d1.getMonth() === d2.getMonth() &&
+    d1.getDate() === d2.getDate()
 }
 
 function r2(n) { return typeof n === "number" ? Math.round(n * 100) / 100 : 0 }
@@ -165,7 +207,7 @@ function hashText(text) {
 }
 
 function colMeta(key) {
-  return ALL_COLS.find(c => c.key === key) || { color: "#94a3b8", bg: "#f8fafc", short: key }
+  return makeCol(key)
 }
 
 function normalizeStage(raw) {
@@ -216,8 +258,8 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     const rawStageLower = rawStage.toLowerCase()
     const rawLeadStageLower = rawLeadStage.toLowerCase()
     const disqStage = DISQUALIFIED_STAGES.has(rawLeadStageLower) ? rawLeadStage
-                    : DISQUALIFIED_STAGES.has(rawStageLower)     ? rawStage
-                    : null
+      : DISQUALIFIED_STAGES.has(rawStageLower) ? rawStage
+        : null
     const stage = disqStage
       ? disqStage
       : (rawStageLower === "counseled" || rawLeadStageLower === "counseled")
@@ -287,8 +329,8 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     }
   }
   return rows.filter(row => {
-    if (row.phone)  return phonePref.get(row.phone)  === row
-    if (row.email)  return emailPref.get(row.email)  === row
+    if (row.phone) return phonePref.get(row.phone) === row
+    if (row.email) return emailPref.get(row.email) === row
     return false
   })
 }
@@ -366,29 +408,29 @@ export function buildLeadMaps(leadDumpRows = [], appStartRows = []) {
   leadDumpRows.slice(1).forEach(row => {
     const p = phone10(row[2])
     if (!p) return
-    const sub   = cellText(row[56])
-    const note  = cellText(row[67])
+    const sub = cellText(row[56])
+    const note = cellText(row[67])
     const stage = cellText(row[55])
-    const src   = cellText(row[6])
-    if (sub)   subStageMap[p]  = sub
-    if (note)  notesMap[p]     = note
+    const src = cellText(row[6])
+    if (sub) subStageMap[p] = sub
+    if (note) notesMap[p] = note
     stageTypeMap[p] = 'Lead'
     if (stage) leadStageMap[p] = stage
-    if (src)   sourceMap[p]    = src
+    if (src) sourceMap[p] = src
   })
 
   appStartRows.slice(1).forEach(row => {
     const p = phone10(row[14])
     if (!p) return
-    const sub   = cellText(row[47])
-    const note  = cellText(row[64])
+    const sub = cellText(row[47])
+    const note = cellText(row[64])
     const stage = cellText(row[46])
-    const src   = cellText(row[18])
-    if (sub)  subStageMap[p]  = sub
-    if (note) notesMap[p]     = note
+    const src = cellText(row[18])
+    if (sub) subStageMap[p] = sub
+    if (note) notesMap[p] = note
     stageTypeMap[p] = 'App Start'
     if (stage) leadStageMap[p] = stage
-    if (src)   sourceMap[p]    = src
+    if (src) sourceMap[p] = src
   })
 
   return { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap }
@@ -404,32 +446,32 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
   return rawRows.slice(1).map(row => {
     const p = phone10(row[7])
     return {
-      empName:      normalizeName(row[3]),
-      toNumber:     p,
-      callType:     cellText(row[8]),
-      callDate:     row[12],
-      notes:        notesMap[p] || cellText(row[14]),
-      audioUrl:     row[16] || "",
-      stageType:    stageTypeMap[p]  || cellText(row[18]),
-      source:       sourceMap[p]     || cellText(row[22]),
-      leadStage:    leadStageMap[p]  || cellText(row[23]),
+      empName: normalizeName(row[3]),
+      toNumber: p,
+      callType: cellText(row[8]),
+      callDate: row[12],
+      notes: notesMap[p] || cellText(row[14]),
+      audioUrl: row[16] || "",
+      stageType: stageTypeMap[p] || cellText(row[18]),
+      source: sourceMap[p] || cellText(row[22]),
+      leadStage: leadStageMap[p] || cellText(row[23]),
       durationMins: parseDurationMins(row[24] ?? row[11]),
-      subStage:     subStageMap[p] || "",
+      subStage: subStageMap[p] || "",
     }
   })
-  .filter(r => r.empName !== null)
-  .filter(r => { const d = parseDate(r.callDate); return d && sameDay(d, target) })
-  .map(r => ({ ...r, section: inferSection(r.stageType, r.leadStage) }))
+    .filter(r => r.empName !== null)
+    .filter(r => { const d = parseDate(r.callDate); return d && sameDay(d, target) })
+    .map(r => ({ ...r, section: inferSection(r.stageType, r.leadStage) }))
 }
 
 function computeStats(rows) {
   if (!rows || rows.length === 0) return null
-  const out  = rows.filter(r => r.callType === "Outgoing")
-  const inc  = rows.filter(r => r.callType === "Incoming")
+  const out = rows.filter(r => r.callType === "Outgoing")
+  const inc = rows.filter(r => r.callType === "Incoming")
   const miss = rows.filter(r => r.callType === "Missed" || r.callType === "Rejected")
   const conn = out.filter(r => r.durationMins > 0)
   const uniq = new Set(out.map(r => r.toNumber).filter(Boolean)).size
-  const dur  = out.reduce((s, r) => s + r.durationMins, 0)
+  const dur = out.reduce((s, r) => s + r.durationMins, 0)
   const stages = {}, subStages = {}, outBySec = {}
   rows.forEach(r => {
     const st = r.leadStage || "Unknown"
@@ -473,7 +515,7 @@ async function fetchAIInsights(notesRows, counsellorName, dateStr) {
   ).join("\n")
 
   const prompt =
-`You are analyzing call notes from ${counsellorName}, an admissions counsellor at a business school.
+    `You are analyzing call notes from ${counsellorName}, an admissions counsellor at a business school.
 Date: ${dateStr}
 Total calls with notes: ${notesRows.length}
 
@@ -523,23 +565,23 @@ urgency: "today" | "this-week" | "low"`
 
   if (!response.ok) throw new Error(`API ${response.status}: ${response.statusText}`)
   const data = await response.json()
-  const raw  = data.content.map(b => b.text || "").join("")
+  const raw = data.content.map(b => b.text || "").join("")
   const text = raw.replace(/```json[\s\S]*?```|```/g, "").trim()
   return robustJSONParse(text)
 }
 
 function robustJSONParse(text) {
   // 1. Direct parse
-  try { return JSON.parse(text) } catch {}
+  try { return JSON.parse(text) } catch { }
 
   // 2. Strip control characters
-  try { return JSON.parse(text.replace(/[\x00-\x1f\x7f]/g, " ")) } catch {}
+  try { return JSON.parse(text.replace(/[\x00-\x1f\x7f]/g, " ")) } catch { }
 
   // 3. Extract outermost { ... } block
   const objMatch = text.match(/\{[\s\S]*\}/)
   if (objMatch) {
-    try { return JSON.parse(objMatch[0]) } catch {}
-    try { return JSON.parse(objMatch[0].replace(/[\x00-\x1f\x7f]/g, " ")) } catch {}
+    try { return JSON.parse(objMatch[0]) } catch { }
+    try { return JSON.parse(objMatch[0].replace(/[\x00-\x1f\x7f]/g, " ")) } catch { }
   }
 
   // 4. Truncate at last complete top-level field and close the object
@@ -549,7 +591,7 @@ function robustJSONParse(text) {
   if (lastComma > 0) {
     try {
       return JSON.parse(base.slice(0, lastComma) + "}")
-    } catch {}
+    } catch { }
   }
 
   throw new Error("Could not parse AI response as JSON")
@@ -598,7 +640,7 @@ function ProgressBar({ pct, color }) {
   return (
     <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
       <div className="h-full rounded-full transition-all duration-500"
-           style={{ width: `${Math.min(pct || 0, 100)}%`, background: color }} />
+        style={{ width: `${Math.min(pct || 0, 100)}%`, background: color }} />
     </div>
   )
 }
@@ -637,9 +679,9 @@ const renderActiveShape = (props) => {
       <text x={cx} y={cy + 14} textAnchor="middle" fill="#94a3b8" fontSize={11}>{payload.name}</text>
       <text x={cx} y={cy + 28} textAnchor="middle" fill="#94a3b8" fontSize={11}>{(percent * 100).toFixed(0)}%</text>
       <Sector cx={cx} cy={cy} innerRadius={innerRadius} outerRadius={outerRadius + 6}
-              startAngle={startAngle} endAngle={endAngle} fill={fill} />
+        startAngle={startAngle} endAngle={endAngle} fill={fill} />
       <Sector cx={cx} cy={cy} innerRadius={innerRadius - 4} outerRadius={innerRadius - 2}
-              startAngle={startAngle} endAngle={endAngle} fill={fill} />
+        startAngle={startAngle} endAngle={endAngle} fill={fill} />
     </g>
   )
 }
@@ -649,9 +691,9 @@ const renderActiveShape = (props) => {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function CallsBarChart({ allRows }) {
-  const data = MAIN_COUNSELLORS.map(c => {
+  const data = orderCols(allRows.map(r => r.empName)).map(c => {
     const rows = allRows.filter(r => r.empName === c.key)
-    const out  = rows.filter(r => r.callType === "Outgoing")
+    const out = rows.filter(r => r.callType === "Outgoing")
     const conn = out.filter(r => r.durationMins > 0)
     return { name: c.short, Outgoing: out.length, Connected: conn.length, Missed: rows.filter(r => r.callType === "Missed" || r.callType === "Rejected").length }
   })
@@ -668,9 +710,9 @@ function CallsBarChart({ allRows }) {
           <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-          <Bar dataKey="Outgoing"  fill="#3b82f6" radius={[4,4,0,0]} />
-          <Bar dataKey="Connected" fill="#22c55e" radius={[4,4,0,0]} />
-          <Bar dataKey="Missed"    fill="#fca5a5" radius={[4,4,0,0]} />
+          <Bar dataKey="Outgoing" fill="#3b82f6" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="Connected" fill="#22c55e" radius={[4, 4, 0, 0]} />
+          <Bar dataKey="Missed" fill="#fca5a5" radius={[4, 4, 0, 0]} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -691,11 +733,11 @@ function CallTypeDonut({ rows, onDrill }) {
       <ResponsiveContainer width="100%" height={200}>
         <PieChart>
           <Pie data={data} cx="50%" cy="50%" innerRadius={55} outerRadius={80}
-               activeIndex={activeIdx} activeShape={renderActiveShape}
-               onMouseEnter={(_, i) => setActiveIdx(i)}
-               onClick={onDrill ? (d) => onDrill(d.name, rows.filter(r => r.callType === d.name)) : undefined}
-               style={onDrill ? { cursor: "pointer" } : {}}
-               dataKey="value" paddingAngle={3}>
+            activeIndex={activeIdx} activeShape={renderActiveShape}
+            onMouseEnter={(_, i) => setActiveIdx(i)}
+            onClick={onDrill ? (d) => onDrill(d.name, rows.filter(r => r.callType === d.name)) : undefined}
+            style={onDrill ? { cursor: "pointer" } : {}}
+            dataKey="value" paddingAngle={3}>
             {data.map((d) => (
               <Cell key={d.name} fill={CALL_TYPE_COLORS[d.name] || "#94a3b8"} />
             ))}
@@ -705,8 +747,8 @@ function CallTypeDonut({ rows, onDrill }) {
       <div className="flex flex-wrap gap-x-4 gap-y-1 justify-center mt-1">
         {data.map(d => (
           <div key={d.name}
-               className={`flex items-center gap-1.5 text-xs text-gray-600 ${onDrill ? "cursor-pointer hover:text-gray-900" : ""}`}
-               onClick={() => onDrill?.(d.name, rows.filter(r => r.callType === d.name))}>
+            className={`flex items-center gap-1.5 text-xs text-gray-600 ${onDrill ? "cursor-pointer hover:text-gray-900" : ""}`}
+            onClick={() => onDrill?.(d.name, rows.filter(r => r.callType === d.name))}>
             <span className="w-2 h-2 rounded-full" style={{ background: CALL_TYPE_COLORS[d.name] || "#94a3b8" }} />
             {d.name} ({d.value})
           </div>
@@ -743,17 +785,17 @@ function StageBarChart({ rows, onDrill }) {
       <div className="space-y-3">
         {data.map(d => (
           <div key={d.fullName}
-               className={onDrill ? "cursor-pointer group" : ""}
-               onClick={() => onDrill?.(d.fullName, rows.filter(r => (r.leadStage || "Unknown") === d.fullName))}>
+            className={onDrill ? "cursor-pointer group" : ""}
+            onClick={() => onDrill?.(d.fullName, rows.filter(r => (r.leadStage || "Unknown") === d.fullName))}>
             <div className="flex justify-between items-center mb-1">
               <span className={`text-xs truncate max-w-[180px] ${onDrill ? "text-gray-700 group-hover:text-gray-900" : "text-gray-600"}`}
-                    title={d.fullName}>{d.fullName}</span>
+                title={d.fullName}>{d.fullName}</span>
               <span className={`text-xs font-semibold ml-2 flex-shrink-0 ${onDrill ? "group-hover:underline" : ""}`}
-                    style={{ color: d.color }}>{d.value}</span>
+                style={{ color: d.color }}>{d.value}</span>
             </div>
             <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden">
               <div className={`h-full rounded-full transition-all duration-700 ${onDrill ? "group-hover:opacity-80" : ""}`}
-                   style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
+                style={{ width: `${(d.value / max) * 100}%`, background: d.color }} />
             </div>
           </div>
         ))}
@@ -797,9 +839,9 @@ function SourceBarChart({ rows, onDrill }) {
             }}
             cursor={{ fill: "#f8fafc" }}
           />
-          <Bar dataKey="value" name="Calls" radius={[4,4,0,0]}
-               onClick={onDrill ? (d) => onDrill(d.fullName, rows.filter(r => r.source === d.fullName)) : undefined}
-               style={onDrill ? { cursor: "pointer" } : {}}>
+          <Bar dataKey="value" name="Calls" radius={[4, 4, 0, 0]}
+            onClick={onDrill ? (d) => onDrill(d.fullName, rows.filter(r => r.source === d.fullName)) : undefined}
+            style={onDrill ? { cursor: "pointer" } : {}}>
             {data.map((_, i) => (
               <Cell key={i} fill={`hsl(${217 + i * 22}, 70%, ${55 + i * 3}%)`} />
             ))}
@@ -814,7 +856,7 @@ function ConnectedBySection({ rows, onDrill }) {
   const sections = ["App Followup", "App Start New", "Followup Lead", "Fresh Lead"]
   const data = sections.map(sec => {
     const r = rows.filter(x => x.section === sec)
-    const out  = r.filter(x => x.callType === "Outgoing")
+    const out = r.filter(x => x.callType === "Outgoing")
     const conn = out.filter(x => x.durationMins > 0)
     return {
       name: sec.replace("App ", "App\n").replace("Followup", "FU").replace("Fresh Lead", "Fresh"),
@@ -838,12 +880,12 @@ function ConnectedBySection({ rows, onDrill }) {
           <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={24} />
           <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
           <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 11, paddingTop: 6 }} />
-          <Bar dataKey="Outgoing"  fill="#93c5fd" radius={[3,3,0,0]}
-               onClick={onDrill ? (d) => onDrill(d.fullName + " — outgoing", rows.filter(r => r.section === d.fullName && r.callType === "Outgoing")) : undefined}
-               style={onDrill ? { cursor: "pointer" } : {}} />
-          <Bar dataKey="Connected" fill="#22c55e" radius={[3,3,0,0]}
-               onClick={onDrill ? (d) => onDrill(d.fullName + " — connected", rows.filter(r => r.section === d.fullName && r.durationMins > 0)) : undefined}
-               style={onDrill ? { cursor: "pointer" } : {}} />
+          <Bar dataKey="Outgoing" fill="#93c5fd" radius={[3, 3, 0, 0]}
+            onClick={onDrill ? (d) => onDrill(d.fullName + " — outgoing", rows.filter(r => r.section === d.fullName && r.callType === "Outgoing")) : undefined}
+            style={onDrill ? { cursor: "pointer" } : {}} />
+          <Bar dataKey="Connected" fill="#22c55e" radius={[3, 3, 0, 0]}
+            onClick={onDrill ? (d) => onDrill(d.fullName + " — connected", rows.filter(r => r.section === d.fullName && r.durationMins > 0)) : undefined}
+            style={onDrill ? { cursor: "pointer" } : {}} />
         </BarChart>
       </ResponsiveContainer>
     </div>
@@ -867,8 +909,10 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
   )
   const convertedCounseledCount = allCounseledRows.length - counseledRows.length
 
+  const cols = useMemo(() => orderCols(counseledRows.map(r => r.counsellor)), [counseledRows])
+
   const byCounsellor = useMemo(() => {
-    return ALL_COLS.map(c => {
+    return cols.map(c => {
       const rows = counseledRows.filter(r => r.counsellor === c.key)
       return {
         name: c.short,
@@ -879,7 +923,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
         total: rows.length,
       }
     }).filter(r => r.total > 0 || r.fullName !== "Others")
-  }, [counseledRows])
+  }, [cols, counseledRows])
 
   const bucketCounts = PIPELINE_BUCKETS.reduce((acc, b) => {
     acc[b.key] = counseledRows.filter(r => r.bucket === b.key).length
@@ -890,31 +934,31 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
     return ["Lead", "App Start"].map(type => {
       const typeFiltered = counseledRows.filter(r => r.type === type)
       const byCol = {}
-      ALL_COLS.forEach(c => {
+      cols.forEach(c => {
         const cRows = typeFiltered.filter(r => r.counsellor === c.key)
         byCol[c.key] = {
-          hot:   cRows.filter(r => r.bucket === "hot").length,
-          warm:  cRows.filter(r => r.bucket === "warm").length,
-          cold:  cRows.filter(r => r.bucket === "cold").length,
+          hot: cRows.filter(r => r.bucket === "hot").length,
+          warm: cRows.filter(r => r.bucket === "warm").length,
+          cold: cRows.filter(r => r.bucket === "cold").length,
           total: cRows.length,
         }
       })
       return {
         type,
-        hot:   typeFiltered.filter(r => r.bucket === "hot").length,
-        warm:  typeFiltered.filter(r => r.bucket === "warm").length,
-        cold:  typeFiltered.filter(r => r.bucket === "cold").length,
+        hot: typeFiltered.filter(r => r.bucket === "hot").length,
+        warm: typeFiltered.filter(r => r.bucket === "warm").length,
+        cold: typeFiltered.filter(r => r.bucket === "cold").length,
         total: typeFiltered.length,
         byCol,
       }
     })
-  }, [counseledRows])
+  }, [cols, counseledRows])
 
   const counsellorTotals = useMemo(() => {
     const out = {}
-    ALL_COLS.forEach(c => { out[c.key] = counseledRows.filter(r => r.counsellor === c.key).length })
+    cols.forEach(c => { out[c.key] = counseledRows.filter(r => r.counsellor === c.key).length })
     return out
-  }, [counseledRows])
+  }, [cols, counseledRows])
 
   const movementRows = [
     ...pipelineChanges.gainedCounseled.map(r => ({ ...r, kind: "gained" })),
@@ -966,7 +1010,7 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
     <div className="space-y-4">
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <div className={onDrill ? "cursor-pointer hover:shadow-md rounded-xl transition-shadow" : ""}
-             onClick={() => onDrill?.("All active counseled leads", counseledRows, "leads")}>
+          onClick={() => onDrill?.("All active counseled leads", counseledRows, "leads")}>
           <KPICard
             label="Active Counseled"
             value={counseledRows.length}
@@ -977,8 +1021,8 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
         </div>
         {PIPELINE_BUCKETS.map(b => (
           <div key={b.key}
-               className={`rounded-xl border p-5 ${b.bg} ${b.border} ${onDrill ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
-               onClick={() => onDrill?.(`${b.label} counseled leads`, counseledRows.filter(r => r.bucket === b.key), "leads")}>
+            className={`rounded-xl border p-5 ${b.bg} ${b.border} ${onDrill ? "cursor-pointer hover:shadow-md transition-shadow" : ""}`}
+            onClick={() => onDrill?.(`${b.label} counseled leads`, counseledRows.filter(r => r.bucket === b.key), "leads")}>
             <div className={`text-xs font-medium uppercase tracking-wide ${b.text}`}>{b.label}</div>
             <div className={`text-3xl font-bold mt-2 ${b.text}`}>{bucketCounts[b.key] || 0}</div>
             <div className="text-xs text-gray-500 mt-1">counseled leads{onDrill ? " — click to view" : ""}</div>
@@ -994,11 +1038,10 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
           </div>
           <div className="flex items-center gap-2 flex-shrink-0">
             <InfoBadge text="Stacked bar showing each counsellor's active counselled leads split into Hot / Warm / Cold. Hot = strong signals in notes/substage, Cold = low intent. Converted leads are excluded." />
-            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${
-              net > 0 ? "bg-green-50 text-green-700 border-green-200" :
-              net < 0 ? "bg-red-50 text-red-700 border-red-200" :
-              "bg-gray-50 text-gray-600 border-gray-200"
-            }`}>
+            <span className={`text-xs font-semibold px-3 py-1 rounded-full border ${net > 0 ? "bg-green-50 text-green-700 border-green-200" :
+                net < 0 ? "bg-red-50 text-red-700 border-red-200" :
+                  "bg-gray-50 text-gray-600 border-gray-200"
+              }`}>
               Counselled {net > 0 ? `+${net}` : net}
             </span>
           </div>
@@ -1011,9 +1054,9 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
             <Tooltip content={<CustomTooltip />} cursor={{ fill: "#f8fafc" }} />
             <Legend iconType="circle" iconSize={8} wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
             {PIPELINE_BUCKETS.map(b => (
-              <Bar key={b.key} dataKey={b.key} name={b.label} stackId="pipeline" fill={b.color} radius={[3,3,0,0]}
-                   onClick={onDrill ? (d) => onDrill(`${d.fullName || d.name} — ${b.label} leads`, counseledRows.filter(r => r.counsellor === d.fullName && r.bucket === b.key), "leads") : undefined}
-                   style={onDrill ? { cursor: "pointer" } : {}} />
+              <Bar key={b.key} dataKey={b.key} name={b.label} stackId="pipeline" fill={b.color} radius={[3, 3, 0, 0]}
+                onClick={onDrill ? (d) => onDrill(`${d.fullName || d.name} — ${b.label} leads`, counseledRows.filter(r => r.counsellor === d.fullName && r.bucket === b.key), "leads") : undefined}
+                style={onDrill ? { cursor: "pointer" } : {}} />
             ))}
           </BarChart>
         </ResponsiveContainer>
@@ -1033,9 +1076,9 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
               <tr>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 w-40">Type / Bucket</th>
                 <th className="px-4 py-3 text-right text-xs font-semibold text-gray-500">Total</th>
-                {ALL_COLS.map(c => (
+                {cols.map(c => (
                   <th key={c.key} className="px-4 py-3 text-right text-xs font-semibold text-gray-500"
-                      style={{ color: c.color }}>{c.short}</th>
+                    style={{ color: c.color }}>{c.short}</th>
                 ))}
               </tr>
             </thead>
@@ -1047,20 +1090,20 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
                 return (
                   <>
                     <tr key={row.type}
-                        className="hover:bg-gray-50 cursor-pointer select-none"
-                        onClick={() => setTypeOpen(p => ({ ...p, [row.type]: !p[row.type] }))}>
+                      className="hover:bg-gray-50 cursor-pointer select-none"
+                      onClick={() => setTypeOpen(p => ({ ...p, [row.type]: !p[row.type] }))}>
                       <td className="px-4 py-3 font-semibold" style={{ color: typeColor }}>
                         <span className="text-gray-400 text-xs mr-2">{isOpen ? "▼" : "▶"}</span>
                         {row.type}
                       </td>
                       <td className={`px-4 py-3 text-right font-semibold text-gray-900 ${drillCls}`}
-                          onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — all counsellors`, counseledRows.filter(r => r.type === row.type), "leads") } : undefined}>
+                        onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — all counsellors`, counseledRows.filter(r => r.type === row.type), "leads") } : undefined}>
                         {row.total}
                       </td>
-                      {ALL_COLS.map(c => (
+                      {cols.map(c => (
                         <td key={c.key} className={`px-4 py-3 text-right font-semibold ${drillCls}`}
-                            style={{ color: row.byCol[c.key]?.total ? c.color : "#d1d5db" }}
-                            onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.counsellor === c.key), "leads") } : undefined}>
+                          style={{ color: row.byCol[c.key]?.total ? c.color : "#d1d5db" }}
+                          onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`${row.type} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.counsellor === c.key), "leads") } : undefined}>
                           {row.byCol[c.key]?.total ?? 0}
                         </td>
                       ))}
@@ -1073,12 +1116,12 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
                           </span>
                         </td>
                         <td className={`px-4 py-2.5 text-right text-xs text-gray-700 font-medium ${drillCls}`}
-                            onClick={onDrill ? () => onDrill(`${row.type} – ${b.label}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key), "leads") : undefined}>
+                          onClick={onDrill ? () => onDrill(`${row.type} – ${b.label}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key), "leads") : undefined}>
                           {row[b.key]}
                         </td>
-                        {ALL_COLS.map(c => (
+                        {cols.map(c => (
                           <td key={c.key} className={`px-4 py-2.5 text-right text-xs text-gray-500 ${drillCls}`}
-                              onClick={onDrill ? () => onDrill(`${row.type} – ${b.label} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key && r.counsellor === c.key), "leads") : undefined}>
+                            onClick={onDrill ? () => onDrill(`${row.type} – ${b.label} — ${c.short}`, counseledRows.filter(r => r.type === row.type && r.bucket === b.key && r.counsellor === c.key), "leads") : undefined}>
                             {row.byCol[c.key]?.[b.key] ?? 0}
                           </td>
                         ))}
@@ -1090,13 +1133,13 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
               <tr className="bg-gray-50 border-t border-gray-200">
                 <td className="px-4 py-3 text-xs font-semibold text-gray-600 uppercase tracking-wide">Total</td>
                 <td className={`px-4 py-3 text-right font-bold text-gray-900 ${onDrill ? "cursor-pointer hover:underline" : ""}`}
-                    onClick={onDrill ? () => onDrill("All counseled leads", counseledRows, "leads") : undefined}>
+                  onClick={onDrill ? () => onDrill("All counseled leads", counseledRows, "leads") : undefined}>
                   {counseledRows.length}
                 </td>
-                {ALL_COLS.map(c => (
+                {cols.map(c => (
                   <td key={c.key} className={`px-4 py-3 text-right font-semibold ${onDrill ? "cursor-pointer hover:underline" : ""}`}
-                      style={{ color: counsellorTotals[c.key] ? c.color : "#d1d5db" }}
-                      onClick={onDrill ? () => onDrill(`All counseled — ${c.short}`, counseledRows.filter(r => r.counsellor === c.key), "leads") : undefined}>
+                    style={{ color: counsellorTotals[c.key] ? c.color : "#d1d5db" }}
+                    onClick={onDrill ? () => onDrill(`All counseled — ${c.short}`, counseledRows.filter(r => r.counsellor === c.key), "leads") : undefined}>
                     {counsellorTotals[c.key] ?? 0}
                   </td>
                 ))}
@@ -1218,11 +1261,10 @@ function PipelineSection({ pipelineRows, pipelineChanges, callRows, date, onDril
             const isLoss = r.kind === "lost"
             return (
               <div key={`${r.id}_${i}`} className="px-5 py-3 flex items-start gap-3">
-                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${
-                  isGain ? "bg-green-50 text-green-700 border-green-200" :
-                  isLoss ? "bg-red-50 text-red-700 border-red-200" :
-                  "bg-blue-50 text-blue-700 border-blue-200"
-                }`}>
+                <span className={`text-xs font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${isGain ? "bg-green-50 text-green-700 border-green-200" :
+                    isLoss ? "bg-red-50 text-red-700 border-red-200" :
+                      "bg-blue-50 text-blue-700 border-blue-200"
+                  }`}>
                   {isGain ? "+1" : isLoss ? "-1" : "sub"}
                 </span>
                 <div className="min-w-0 flex-1">
@@ -1267,7 +1309,7 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
         <div className="flex items-center gap-2 flex-shrink-0">
           <InfoBadge text="Count of leads currently in the Counseled stage across Lead Dump and App Start sheets. Converted (payment completed) leads are excluded. Hot/Warm/Cold inferred from substage and notes keywords." />
           <button onClick={onOpenPipeline}
-                  className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
+            className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">
             Open Pipeline
           </button>
         </div>
@@ -1285,17 +1327,14 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
             </div>
           </div>
         ))}
-        <div className={`rounded-lg border p-4 ${
-          net > 0 ? "bg-green-50 border-green-200" :
-          net < 0 ? "bg-red-50 border-red-200" :
-          "bg-gray-50 border-gray-200"
-        }`}>
-          <div className={`text-xs uppercase tracking-wide ${
-            net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-500"
-          }`}>Change</div>
-          <div className={`text-2xl font-bold mt-1 ${
-            net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-700"
-          }`}>{net > 0 ? `+${net}` : net}</div>
+        <div className={`rounded-lg border p-4 ${net > 0 ? "bg-green-50 border-green-200" :
+            net < 0 ? "bg-red-50 border-red-200" :
+              "bg-gray-50 border-gray-200"
+          }`}>
+          <div className={`text-xs uppercase tracking-wide ${net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-500"
+            }`}>Change</div>
+          <div className={`text-2xl font-bold mt-1 ${net > 0 ? "text-green-700" : net < 0 ? "text-red-700" : "text-gray-700"
+            }`}>{net > 0 ? `+${net}` : net}</div>
         </div>
       </div>
     </div>
@@ -1307,22 +1346,23 @@ function PipelineSummary({ pipelineRows, pipelineChanges, onOpenPipeline }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const OUT_SECTIONS = [
-  { val: "App Followup",  label: "App Start Followup" },
-  { val: "App Start New", label: "App Start New"       },
-  { val: "Followup Lead", label: "Followup Leads"      },
-  { val: "Fresh Lead",    label: "Fresh Leads"         },
+  { val: "App Followup", label: "App Start Followup" },
+  { val: "App Start New", label: "App Start New" },
+  { val: "Followup Lead", label: "Followup Leads" },
+  { val: "Fresh Lead", label: "Fresh Leads" },
 ]
 
 function PivotTable({ rows, onDrill }) {
   const [stageOpen, setStageOpen] = useState({})
-  const [outOpen,   setOutOpen]   = useState(false)
+  const [outOpen, setOutOpen] = useState(false)
 
-  const allS  = computeStats(rows)
+  const allS = computeStats(rows)
+  const cols = useMemo(() => orderCols(rows.map(r => r.empName)), [rows])
   const byCol = useMemo(() => {
     const m = {}
-    ALL_COLS.forEach(c => { m[c.key] = computeStats(rows.filter(r => r.empName === c.key)) })
+    cols.forEach(c => { m[c.key] = computeStats(rows.filter(r => r.empName === c.key)) })
     return m
-  }, [rows])
+  }, [cols, rows])
 
   const allStages = useMemo(() => {
     const set = new Set(rows.map(r => r.leadStage || "Unknown"))
@@ -1350,8 +1390,8 @@ function PivotTable({ rows, onDrill }) {
 
   const SectionRow = ({ label, color }) => (
     <tr>
-      <td colSpan={2 + ALL_COLS.length} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider"
-          style={{ background: color + "12", color, borderTop: `1px solid ${color}30` }}>
+      <td colSpan={2 + cols.length} className="px-4 py-2 text-xs font-semibold uppercase tracking-wider"
+        style={{ background: color + "12", color, borderTop: `1px solid ${color}30` }}>
         {label}
       </td>
     </tr>
@@ -1362,18 +1402,18 @@ function PivotTable({ rows, onDrill }) {
   const DataRow = ({ label, getV, getRows, bold, indent = 0 }) => (
     <tr className="hover:bg-gray-50 transition-colors">
       <td className="px-4 py-2.5 text-sm border-b border-gray-100"
-          style={{ paddingLeft: 16 + indent * 16, fontWeight: bold ? 600 : 400, color: indent ? "#6b7280" : "#1e293b" }}>
+        style={{ paddingLeft: 16 + indent * 16, fontWeight: bold ? 600 : 400, color: indent ? "#6b7280" : "#1e293b" }}>
         {label}
       </td>
       <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${getRows && onDrill ? drillCls : ""}`}
-          onClick={getRows && onDrill ? () => onDrill(`${label} — Total`, getRows(null), "calls") : undefined}>
+        onClick={getRows && onDrill ? () => onDrill(`${label} — Total`, getRows(null), "calls") : undefined}>
         {allS ? getV(allS) ?? "—" : "—"}
       </td>
-      {ALL_COLS.map(c => (
+      {cols.map(c => (
         <td key={c.key}
-            className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${getRows && onDrill ? drillCls : ""}`}
-            style={{ color: byCol[c.key] ? c.color : "#d1d5db", fontWeight: bold ? 600 : 400 }}
-            onClick={getRows && onDrill ? () => onDrill(`${label} — ${c.short}`, getRows(c.key), "calls") : undefined}>
+          className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${getRows && onDrill ? drillCls : ""}`}
+          style={{ color: byCol[c.key] ? c.color : "#d1d5db", fontWeight: bold ? 600 : 400 }}
+          onClick={getRows && onDrill ? () => onDrill(`${label} — ${c.short}`, getRows(c.key), "calls") : undefined}>
           {byCol[c.key] ? (getV(byCol[c.key]) ?? "—") : "0"}
         </td>
       ))}
@@ -1387,26 +1427,26 @@ function PivotTable({ rows, onDrill }) {
           <tr>
             <TH>Metric</TH>
             <TH right>Total</TH>
-            {ALL_COLS.map(c => <TH key={c.key} right>{c.short}</TH>)}
+            {cols.map(c => <TH key={c.key} right>{c.short}</TH>)}
           </tr>
         </thead>
         <tbody>
           <SectionRow label="Volume" color="#3b82f6" />
-          <DataRow label="Total calls"            getV={s=>s.total}    bold getRows={makeFilter(null)} />
+          <DataRow label="Total calls" getV={s => s.total} bold getRows={makeFilter(null)} />
           <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
-              onClick={() => setOutOpen(o => !o)}>
+            onClick={() => setOutOpen(o => !o)}>
             <td className="px-4 py-2.5 text-sm border-b border-gray-100 text-gray-800 select-none">
               <span className="text-gray-400 text-xs mr-2">{outOpen ? "▼" : "▶"}</span>
               Outgoing
             </td>
             <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${drillCls}`}
-                onClick={onDrill ? (e) => { e.stopPropagation(); onDrill("Outgoing — Total", rows.filter(r => r.callType === "Outgoing"), "calls") } : undefined}>
+              onClick={onDrill ? (e) => { e.stopPropagation(); onDrill("Outgoing — Total", rows.filter(r => r.callType === "Outgoing"), "calls") } : undefined}>
               {allS?.outgoing ?? "—"}
             </td>
-            {ALL_COLS.map(c => (
+            {cols.map(c => (
               <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
-                  style={{ color: byCol[c.key] ? c.color : "#d1d5db" }}
-                  onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Outgoing — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.empName === c.key), "calls") } : undefined}>
+                style={{ color: byCol[c.key] ? c.color : "#d1d5db" }}
+                onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Outgoing — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.empName === c.key), "calls") } : undefined}>
                 {byCol[c.key]?.outgoing ?? 0}
               </td>
             ))}
@@ -1417,39 +1457,39 @@ function PivotTable({ rows, onDrill }) {
                 {sec.label}
               </td>
               <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 ${drillCls}`}
-                  onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val), "calls") : undefined}>
+                onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val), "calls") : undefined}>
                 {allS?.outBySec?.[sec.val] ?? 0}
               </td>
-              {ALL_COLS.map(c => (
+              {cols.map(c => (
                 <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-500 ${drillCls}`}
-                    onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label} — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val && r.empName === c.key), "calls") : undefined}>
+                  onClick={onDrill ? () => onDrill(`Outgoing → ${sec.label} — ${c.short}`, rows.filter(r => r.callType === "Outgoing" && r.section === sec.val && r.empName === c.key), "calls") : undefined}>
                   {byCol[c.key]?.outBySec?.[sec.val] ?? 0}
                 </td>
               ))}
             </tr>
           ))}
-          <DataRow label="Incoming"               getV={s=>s.incoming} getRows={makeFilter(r => r.callType === "Incoming")} />
-          <DataRow label="Missed / Rejected"      getV={s=>s.missed}   getRows={makeFilter(r => r.callType === "Missed" || r.callType === "Rejected")} />
-          <DataRow label="Unique numbers dialled" getV={s=>s.unique}   />
+          <DataRow label="Incoming" getV={s => s.incoming} getRows={makeFilter(r => r.callType === "Incoming")} />
+          <DataRow label="Missed / Rejected" getV={s => s.missed} getRows={makeFilter(r => r.callType === "Missed" || r.callType === "Rejected")} />
+          <DataRow label="Unique numbers dialled" getV={s => s.unique} />
 
           <SectionRow label="Connection quality" color="#22c55e" />
-          <DataRow label="Connected"   getV={s=>s.connected} bold getRows={makeFilter(r => r.callType === "Outgoing" && r.durationMins > 0)} />
-          <DataRow label="Connected %" getV={s=>s.connPct !== null ? s.connPct + "%" : "—"} />
+          <DataRow label="Connected" getV={s => s.connected} bold getRows={makeFilter(r => r.callType === "Outgoing" && r.durationMins > 0)} />
+          <DataRow label="Connected %" getV={s => s.connPct !== null ? s.connPct + "%" : "—"} />
 
           <SectionRow label="Stage breakdown" color="#f59e0b" />
           {allStages.map(stage => {
-            const isOpen   = stageOpen[stage]
-            const subMap   = {}
+            const isOpen = stageOpen[stage]
+            const subMap = {}
             rows.filter(r => (r.leadStage || "Unknown") === stage && r.subStage).forEach(r => {
               subMap[r.subStage] = (subMap[r.subStage] || 0) + 1
             })
-            const subKeys    = Object.entries(subMap).sort((a,b)=>b[1]-a[1]).map(([k])=>k)
+            const subKeys = Object.entries(subMap).sort((a, b) => b[1] - a[1]).map(([k]) => k)
             const hasSubStages = subKeys.length > 0
-            const stageColor   = STAGE_COLORS[stage] || "#94a3b8"
+            const stageColor = STAGE_COLORS[stage] || "#94a3b8"
             return (
               <React.Fragment key={stage}>
                 <tr className="hover:bg-gray-50 transition-colors cursor-pointer"
-                    onClick={() => hasSubStages && setStageOpen(p => ({...p,[stage]:!p[stage]}))}>
+                  onClick={() => hasSubStages && setStageOpen(p => ({ ...p, [stage]: !p[stage] }))}>
                   <td className="px-4 py-2.5 text-sm border-b border-gray-100 font-medium" style={{ color: "#1e293b" }}>
                     <span className="inline-flex items-center gap-2">
                       {hasSubStages
@@ -1461,38 +1501,38 @@ function PivotTable({ rows, onDrill }) {
                     </span>
                   </td>
                   <td className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 font-semibold text-gray-800 ${drillCls}`}
-                      onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage}`, rows.filter(r => (r.leadStage||"Unknown") === stage), "calls") } : undefined}>
+                    onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage}`, rows.filter(r => (r.leadStage || "Unknown") === stage), "calls") } : undefined}>
                     {allS?.stages[stage] ?? 0}
                   </td>
-                  {ALL_COLS.map(c => {
+                  {cols.map(c => {
                     const v = byCol[c.key]?.stages[stage] ?? 0
                     return (
                       <td key={c.key} className={`px-4 py-2.5 text-sm text-right border-b border-gray-100 ${drillCls}`}
-                          style={{ color: v > 0 ? c.color : "#d1d5db" }}
-                          onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage} — ${c.short}`, rows.filter(r => (r.leadStage||"Unknown") === stage && r.empName === c.key), "calls") } : undefined}>
+                        style={{ color: v > 0 ? c.color : "#d1d5db" }}
+                        onClick={onDrill ? (e) => { e.stopPropagation(); onDrill(`Stage: ${stage} — ${c.short}`, rows.filter(r => (r.leadStage || "Unknown") === stage && r.empName === c.key), "calls") } : undefined}>
                         {v}
                       </td>
                     )
                   })}
                 </tr>
                 {isOpen && subKeys.map(sub => {
-                  const tot = rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub).length
+                  const tot = rows.filter(r => (r.leadStage || "Unknown") === stage && r.subStage === sub).length
                   return (
                     <tr key={sub} className="bg-amber-50/40">
                       <td className="py-2 text-xs text-gray-500 border-b border-gray-100"
-                          style={{ paddingLeft: 44, borderLeft: `3px solid ${stageColor}40` }}>
+                        style={{ paddingLeft: 44, borderLeft: `3px solid ${stageColor}40` }}>
                         {sub}
                       </td>
                       <td className={`px-4 py-2 text-xs text-right border-b border-gray-100 text-gray-600 font-medium ${drillCls}`}
-                          onClick={onDrill ? () => onDrill(`${stage} / ${sub}`, rows.filter(r => (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
+                        onClick={onDrill ? () => onDrill(`${stage} / ${sub}`, rows.filter(r => (r.leadStage || "Unknown") === stage && r.subStage === sub), "calls") : undefined}>
                         {tot}
                       </td>
-                      {ALL_COLS.map(c => {
-                        const v = rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub).length
+                      {cols.map(c => {
+                        const v = rows.filter(r => r.empName === c.key && (r.leadStage || "Unknown") === stage && r.subStage === sub).length
                         return (
                           <td key={c.key} className={`px-4 py-2 text-xs text-right border-b border-gray-100 ${drillCls}`}
-                              style={{ color: v > 0 ? c.color : "#d1d5db" }}
-                              onClick={onDrill ? () => onDrill(`${stage} / ${sub} — ${c.short}`, rows.filter(r => r.empName===c.key && (r.leadStage||"Unknown")===stage && r.subStage===sub), "calls") : undefined}>
+                            style={{ color: v > 0 ? c.color : "#d1d5db" }}
+                            onClick={onDrill ? () => onDrill(`${stage} / ${sub} — ${c.short}`, rows.filter(r => r.empName === c.key && (r.leadStage || "Unknown") === stage && r.subStage === sub), "calls") : undefined}>
                             {v}
                           </td>
                         )
@@ -1505,8 +1545,8 @@ function PivotTable({ rows, onDrill }) {
           })}
 
           <SectionRow label="Duration (outgoing only)" color="#8b5cf6" />
-          <DataRow label="Total (mins)"                  getV={s=>s.totalDur} bold getRows={makeFilter(r => r.callType === "Outgoing")} />
-          <DataRow label="Avg per connected call (mins)"  getV={s=>s.avgDur}  />
+          <DataRow label="Total (mins)" getV={s => s.totalDur} bold getRows={makeFilter(r => r.callType === "Outgoing")} />
+          <DataRow label="Avg per connected call (mins)" getV={s => s.avgDur} />
         </tbody>
       </table>
       <p className="text-xs text-gray-400 mt-3 px-4">Click any number to see raw calls. Substage data joined from Lead Dump by phone.</p>
@@ -1519,9 +1559,9 @@ function PivotTable({ rows, onDrill }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function AIInsightsPanel({ rows, counsellorName, dateStr }) {
-  const [status,   setStatus]   = useState("idle")
+  const [status, setStatus] = useState("idle")
   const [insights, setInsights] = useState(null)
-  const [errMsg,   setErrMsg]   = useState("")
+  const [errMsg, setErrMsg] = useState("")
   const cacheRef = useRef({})
   const requestKeyRef = useRef("")
 
@@ -1549,7 +1589,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         cacheRef.current[key] = stored.insights
         return stored.insights
       }
-    } catch {}
+    } catch { }
     return null
   }, [])
 
@@ -1563,7 +1603,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         notesCount: notesRows.length,
         insights: value,
       }))
-    } catch {}
+    } catch { }
   }, [counsellorName, dateStr, notesRows.length])
 
   const run = useCallback(async (force = false) => {
@@ -1628,13 +1668,13 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
   )
 
   const { topThemes, topObjections, objectionsBySource,
-          overallSentiment, sentimentReason,
-          leadClassifications, followupFlags } = insights
+    overallSentiment, sentimentReason,
+    leadClassifications, followupFlags } = insights
 
   const classified = {
-    hot:  (leadClassifications||[]).filter(l=>l.interest==="hot"),
-    warm: (leadClassifications||[]).filter(l=>l.interest==="warm"),
-    cold: (leadClassifications||[]).filter(l=>l.interest==="cold"),
+    hot: (leadClassifications || []).filter(l => l.interest === "hot"),
+    warm: (leadClassifications || []).filter(l => l.interest === "warm"),
+    cold: (leadClassifications || []).filter(l => l.interest === "cold"),
   }
   const sent = SENTIMENT[overallSentiment] || SENTIMENT.mixed
 
@@ -1650,7 +1690,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         <div className="md:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm font-semibold text-gray-800 mb-3">Top Themes</div>
           <div className="space-y-2">
-            {(topThemes||[]).slice(0,5).map(({ theme, count, example }) => (
+            {(topThemes || []).slice(0, 5).map(({ theme, count, example }) => (
               <div key={theme} className="flex items-start justify-between gap-3 py-1.5 border-b border-gray-100 last:border-0">
                 <div>
                   <div className="text-sm text-gray-800">{theme}</div>
@@ -1668,7 +1708,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm font-semibold text-gray-800 mb-3">Objections &amp; How Handled</div>
           <div className="space-y-3">
-            {(topObjections||[]).map(({ objection, count, howHandled }) => (
+            {(topObjections || []).map(({ objection, count, howHandled }) => (
               <div key={objection} className="border-l-2 border-red-300 pl-3">
                 <div className="flex justify-between items-center">
                   <span className="text-sm font-medium text-gray-800">"{objection}"</span>
@@ -1682,7 +1722,7 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm font-semibold text-gray-800 mb-3">Objections by Source</div>
           <div className="space-y-2">
-            {(objectionsBySource||[]).map(({ source, topObjection, count }) => (
+            {(objectionsBySource || []).map(({ source, topObjection, count }) => (
               <div key={source} className="flex justify-between items-start py-1.5 border-b border-gray-100 last:border-0">
                 <div>
                   <div className="text-sm font-medium text-gray-700">{source}</div>
@@ -1700,9 +1740,9 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
         <div className="text-sm font-semibold text-gray-800 mb-3">Lead Interest Classification</div>
         <div className="grid grid-cols-3 gap-3">
           {[
-            { label:"🔥 Hot",  leads: classified.hot,  border:"border-amber-300",  bg:"bg-amber-50",  text:"text-amber-800"  },
-            { label:"🌤 Warm", leads: classified.warm, border:"border-blue-300",   bg:"bg-blue-50",   text:"text-blue-800"   },
-            { label:"❄ Cold",  leads: classified.cold, border:"border-gray-200",   bg:"bg-gray-50",   text:"text-gray-600"   },
+            { label: "🔥 Hot", leads: classified.hot, border: "border-amber-300", bg: "bg-amber-50", text: "text-amber-800" },
+            { label: "🌤 Warm", leads: classified.warm, border: "border-blue-300", bg: "bg-blue-50", text: "text-blue-800" },
+            { label: "❄ Cold", leads: classified.cold, border: "border-gray-200", bg: "bg-gray-50", text: "text-gray-600" },
           ].map(({ label, leads, border, bg, text }) => (
             <div key={label} className={`rounded-lg border ${border} p-3`}>
               <div className={`text-xs font-semibold mb-2 ${text}`}>{label} — {leads.length}</div>
@@ -1726,14 +1766,14 @@ function AIInsightsPanel({ rows, counsellorName, dateStr }) {
       </div>
 
       {/* Follow-up flags */}
-      {(followupFlags||[]).length > 0 && (
+      {(followupFlags || []).length > 0 && (
         <div className="bg-white rounded-xl border border-gray-200 p-5">
           <div className="text-sm font-semibold text-gray-800 mb-3">Follow-up Flags</div>
           <div className="space-y-3">
             {[...followupFlags]
-              .sort((a,b) => ["today","this-week","low"].indexOf(a.urgency) - ["today","this-week","low"].indexOf(b.urgency))
+              .sort((a, b) => ["today", "this-week", "low"].indexOf(a.urgency) - ["today", "this-week", "low"].indexOf(b.urgency))
               .map((f, i) => {
-                const u   = URGENCY[f.urgency] || URGENCY.low
+                const u = URGENCY[f.urgency] || URGENCY.low
                 const row = notesRows[f.callIndex - 1]
                 return (
                   <div key={i} className="flex items-start gap-3 py-2.5 border-b border-gray-100 last:border-0">
@@ -1765,29 +1805,29 @@ function DrillDrawer({ drill, onClose }) {
   if (!drill) return null
 
   const CALLS_COLS = [
-    { key: "empName",      label: "Counsellor" },
-    { key: "toNumber",     label: "Phone"       },
-    { key: "callType",     label: "Type"        },
-    { key: "durationMins", label: "Dur (min)",  fmt: v => v ? r2(v) : "—" },
-    { key: "section",      label: "Section"     },
-    { key: "leadStage",    label: "Stage"       },
-    { key: "subStage",     label: "Sub-stage"   },
-    { key: "source",       label: "Source"      },
-    { key: "notes",        label: "Notes"       },
+    { key: "empName", label: "Counsellor" },
+    { key: "toNumber", label: "Phone" },
+    { key: "callType", label: "Type" },
+    { key: "durationMins", label: "Dur (min)", fmt: v => v ? r2(v) : "—" },
+    { key: "section", label: "Section" },
+    { key: "leadStage", label: "Stage" },
+    { key: "subStage", label: "Sub-stage" },
+    { key: "source", label: "Source" },
+    { key: "notes", label: "Notes" },
   ]
 
   const LEADS_COLS = [
-    { key: "name",         label: "Name"          },
-    { key: "phone",        label: "Phone"         },
-    { key: "counsellor",   label: "Counsellor"    },
-    { key: "stage",        label: "Stage"         },
-    { key: "subStage",     label: "Sub-stage"     },
-    { key: "bucket",       label: "Bucket"        },
-    { key: "source",       label: "Source"        },
-    { key: "type",         label: "Type"          },
+    { key: "name", label: "Name" },
+    { key: "phone", label: "Phone" },
+    { key: "counsellor", label: "Counsellor" },
+    { key: "stage", label: "Stage" },
+    { key: "subStage", label: "Sub-stage" },
+    { key: "bucket", label: "Bucket" },
+    { key: "source", label: "Source" },
+    { key: "type", label: "Type" },
     { key: "registeredOn", label: "Registered On" },
     { key: "lastActivity", label: "Last Activity" },
-    { key: "notes",        label: "Notes"         },
+    { key: "notes", label: "Notes" },
   ]
 
   const cols = drill.type === "calls" ? CALLS_COLS : LEADS_COLS
@@ -1802,7 +1842,7 @@ function DrillDrawer({ drill, onClose }) {
             <div className="text-xs text-gray-400 mt-0.5">{drill.rows.length} record{drill.rows.length !== 1 ? "s" : ""}</div>
           </div>
           <button onClick={onClose}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition text-xl leading-none">
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-700 transition text-xl leading-none">
             ×
           </button>
         </div>
@@ -1828,8 +1868,8 @@ function DrillDrawer({ drill, onClose }) {
                       const val = c.fmt ? c.fmt(raw) : (raw || "—")
                       return (
                         <td key={c.key}
-                            className={`px-3 py-2 text-gray-700 truncate ${c.key === "notes" ? "max-w-[260px]" : "max-w-[150px]"}`}
-                            title={String(raw ?? "")}>
+                          className={`px-3 py-2 text-gray-700 truncate ${c.key === "notes" ? "max-w-[260px]" : "max-w-[150px]"}`}
+                          title={String(raw ?? "")}>
                           {val}
                         </td>
                       )
@@ -1849,7 +1889,7 @@ function DrillDrawer({ drill, onClose }) {
 // PAID APPS — HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PA_MONTHS = { jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11 }
+const PA_MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 }
 
 function paidSerialToDate(serial) {
   if (!serial && serial !== 0) return null
@@ -1897,9 +1937,9 @@ const PA_DAYS_BUCKET_ORDER = ["Same day", "1–3 days", "4–7 days", "8–14 da
 
 function paidGetDaysBucket(days) {
   if (days === null || days === undefined || isNaN(days)) return "Unknown"
-  if (days <= 0)  return "Same day"
-  if (days <= 3)  return "1–3 days"
-  if (days <= 7)  return "4–7 days"
+  if (days <= 0) return "Same day"
+  if (days <= 3) return "1–3 days"
+  if (days <= 7) return "4–7 days"
   if (days <= 14) return "8–14 days"
   if (days <= 30) return "15–30 days"
   return "30+ days"
@@ -1909,7 +1949,7 @@ function paidGetWorkStatus(gradYear) {
   const yr = parseInt(gradYear)
   if (isNaN(yr)) return "Unknown"
   const now = new Date().getFullYear()
-  if (yr < now)  return "Working Professional"
+  if (yr < now) return "Working Professional"
   if (yr === now) return "Fresher"
   return "Student"
 }
@@ -1929,25 +1969,25 @@ function parsePaidAppRow(row) {
   const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
   const gradYear = parseInt(row[88]) || null
   return {
-    name:        cellText(row[12]),
-    email:       cellText(row[13]),
-    mobile:      cellText(row[14]),
-    source:      cellText(row[18]) || "Unknown",
-    medium:      cellText(row[19]) || "Unknown",
-    campaign:    cellText(row[20]) || "Unknown",
-    counsellor:  normalizeName(row[43]) || cellText(row[43]) || "Unknown",
+    name: cellText(row[12]),
+    email: cellText(row[13]),
+    mobile: cellText(row[14]),
+    source: cellText(row[18]) || "Unknown",
+    medium: cellText(row[19]) || "Unknown",
+    campaign: cellText(row[20]) || "Unknown",
+    counsellor: normalizeName(row[43]) || cellText(row[43]) || "Unknown",
     registeredOn,
     paidOn,
     daysToConvert,
-    daysBucket:  paidGetDaysBucket(daysToConvert),
-    state:       cellText(row[76]) || "Unknown",
-    city:        cellText(row[77]) || "Unknown",
-    gradYear:    gradYear ? String(gradYear) : "Unknown",
-    workStatus:  paidGetWorkStatus(gradYear),
-    college:     cellText(row[106]) || "Unknown",
-    degree:      cellText(row[109]) || "Unknown",
-    company:     cellText(row[128]) || "Unknown",
-    role:        cellText(row[134]) || "Unknown",
+    daysBucket: paidGetDaysBucket(daysToConvert),
+    state: cellText(row[76]) || "Unknown",
+    city: cellText(row[77]) || "Unknown",
+    gradYear: gradYear ? String(gradYear) : "Unknown",
+    workStatus: paidGetWorkStatus(gradYear),
+    college: cellText(row[106]) || "Unknown",
+    degree: cellText(row[109]) || "Unknown",
+    company: cellText(row[128]) || "Unknown",
+    role: cellText(row[134]) || "Unknown",
   }
 }
 
@@ -1978,48 +2018,48 @@ function paidGroupDaysBuckets(leads) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PA_COUNSELLOR_COLORS = {
-  "Jasmeet Kaur":   { color: "#3b82f6", bg: "#eff6ff" },
-  "Komal Pandey":   { color: "#8b5cf6", bg: "#f5f3ff" },
+  "Jasmeet Kaur": { color: "#3b82f6", bg: "#eff6ff" },
+  "Komal Pandey": { color: "#8b5cf6", bg: "#f5f3ff" },
   "Prerna Kaushik": { color: "#ec4899", bg: "#fdf2f8" },
 }
 
 const PA_ATTR_CONFIGS = [
-  { field: "source",     title: "Source",           icon: "🌐", accent: "#4F46E5" },
-  { field: "medium",     title: "Medium / Channel", icon: "📡", accent: "#0891B2" },
-  { field: "counsellor", title: "Counsellor",       icon: "🧑‍💼", accent: "#059669" },
-  { field: "workStatus", title: "Work Status",      icon: "💼", accent: "#D97706" },
-  { field: "daysBucket", title: "Days to Convert",  icon: "⏱️", accent: "#DC2626" },
-  { field: "city",       title: "City",             icon: "🏙️", accent: "#0891B2" },
-  { field: "state",      title: "State",            icon: "📍", accent: "#475569" },
-  { field: "gradYear",   title: "Graduation Year",  icon: "🎓", accent: "#7C3AED" },
-  { field: "degree",     title: "Degree",           icon: "📜", accent: "#059669" },
-  { field: "college",    title: "College",          icon: "🏛️", accent: "#D97706" },
-  { field: "company",    title: "Company",          icon: "🏢", accent: "#334155" },
-  { field: "role",       title: "Role",             icon: "👤", accent: "#4F46E5" },
+  { field: "source", title: "Source", icon: "🌐", accent: "#4F46E5" },
+  { field: "medium", title: "Medium / Channel", icon: "📡", accent: "#0891B2" },
+  { field: "counsellor", title: "Counsellor", icon: "🧑‍💼", accent: "#059669" },
+  { field: "workStatus", title: "Work Status", icon: "💼", accent: "#D97706" },
+  { field: "daysBucket", title: "Days to Convert", icon: "⏱️", accent: "#DC2626" },
+  { field: "city", title: "City", icon: "🏙️", accent: "#0891B2" },
+  { field: "state", title: "State", icon: "📍", accent: "#475569" },
+  { field: "gradYear", title: "Graduation Year", icon: "🎓", accent: "#7C3AED" },
+  { field: "degree", title: "Degree", icon: "📜", accent: "#059669" },
+  { field: "college", title: "College", icon: "🏛️", accent: "#D97706" },
+  { field: "company", title: "Company", icon: "🏢", accent: "#334155" },
+  { field: "role", title: "Role", icon: "👤", accent: "#4F46E5" },
 ]
 
 function PaidAttrList({ items, total, accent }) {
   return (
     <div className="flex flex-col divide-y divide-gray-50">
       {items.map(({ label, count }, i) => {
-        const pct     = total ? Math.round(count / total * 100) : 0
+        const pct = total ? Math.round(count / total * 100) : 0
         const isOther = label === "Others"
         return (
           <div key={label} className="flex items-center gap-3 py-2 first:pt-0 last:pb-0">
             <span className="w-5 text-xs font-bold flex-shrink-0 text-right"
-                  style={{ color: isOther ? "#CBD5E1" : accent }}>
+              style={{ color: isOther ? "#CBD5E1" : accent }}>
               {i + 1}
             </span>
             <span className={`flex-1 text-xs truncate min-w-0 ${isOther ? "text-gray-400 italic" : "text-gray-700"}`}
-                  title={label}>
+              title={label}>
               {label}
             </span>
             <span className="text-sm font-bold text-gray-900 flex-shrink-0">{count}</span>
             <span className="text-xs font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0 tabular-nums w-10 text-center"
-                  style={{
-                    background: isOther ? "#F1F5F9" : `${accent}18`,
-                    color: isOther ? "#94A3B8" : accent,
-                  }}>
+              style={{
+                background: isOther ? "#F1F5F9" : `${accent}18`,
+                color: isOther ? "#94A3B8" : accent,
+              }}>
               {pct}%
             </span>
           </div>
@@ -2039,8 +2079,8 @@ function PaidAttrDrillDrawer({ title, icon, field, leads, total, accent, onClose
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
       <div className="fixed right-0 top-0 h-full z-50 bg-white shadow-2xl flex flex-col"
-           style={{ width: "min(440px, 95vw)" }}
-           onClick={e => e.stopPropagation()}>
+        style={{ width: "min(440px, 95vw)" }}
+        onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 bg-gray-50">
           <div>
             <div className="text-xs font-bold tracking-widest uppercase mb-1" style={{ color: accent }}>
@@ -2051,7 +2091,7 @@ function PaidAttrDrillDrawer({ title, icon, field, leads, total, accent, onClose
             </div>
           </div>
           <button onClick={onClose}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-500 text-xl transition">
+            className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-200 text-gray-500 text-xl transition">
             ✕
           </button>
         </div>
@@ -2069,7 +2109,7 @@ function PaidAttrDrillDrawer({ title, icon, field, leads, total, accent, onClose
                   </span>
                   <span className="text-sm font-bold text-gray-900 flex-shrink-0">{count}</span>
                   <span className="text-xs font-semibold px-1.5 py-0.5 rounded-md flex-shrink-0 tabular-nums w-12 text-center"
-                        style={{ background: `${accent}18`, color: accent }}>
+                    style={{ background: `${accent}18`, color: accent }}>
                     {pct}%
                   </span>
                 </div>
@@ -2087,10 +2127,10 @@ function PaidAppsDrawer({ leads, label, onClose }) {
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-40" onClick={onClose} />
       <div className="fixed right-0 top-0 h-full z-50 bg-white shadow-2xl flex flex-col"
-           style={{ width: "min(1060px, 95vw)" }}
-           onClick={e => e.stopPropagation()}>
+        style={{ width: "min(1060px, 95vw)" }}
+        onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 flex-shrink-0 flex items-center justify-between"
-             style={{ background: "linear-gradient(135deg, #1E1B4B, #312E81)", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
+          style={{ background: "linear-gradient(135deg, #1E1B4B, #312E81)", borderBottom: "1px solid rgba(255,255,255,.1)" }}>
           <div>
             <div className="text-xs font-bold tracking-widest mb-1" style={{ color: "#A5B4FC" }}>
               PAID APPS · DRILL-DOWN
@@ -2100,8 +2140,8 @@ function PaidAppsDrawer({ leads, label, onClose }) {
             </div>
           </div>
           <button onClick={onClose}
-                  className="w-9 h-9 rounded-lg flex items-center justify-center text-xl leading-none transition"
-                  style={{ background: "rgba(255,255,255,.15)", color: "#E0E7FF", border: "none", cursor: "pointer" }}>
+            className="w-9 h-9 rounded-lg flex items-center justify-center text-xl leading-none transition"
+            style={{ background: "rgba(255,255,255,.15)", color: "#E0E7FF", border: "none", cursor: "pointer" }}>
             ×
           </button>
         </div>
@@ -2111,10 +2151,10 @@ function PaidAppsDrawer({ leads, label, onClose }) {
               <tr>
                 {["#", "Name", "Counsellor", "Source", "Medium", "City", "State", "College", "Degree",
                   "Grad Yr", "Work Status", "Company", "Role", "Paid On", "Days to Convert"].map(h => (
-                  <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 whitespace-nowrap uppercase tracking-wider">
-                    {h}
-                  </th>
-                ))}
+                    <th key={h} className="px-3 py-2.5 text-left text-xs font-bold text-gray-500 whitespace-nowrap uppercase tracking-wider">
+                      {h}
+                    </th>
+                  ))}
               </tr>
             </thead>
             <tbody>
@@ -2122,8 +2162,8 @@ function PaidAppsDrawer({ leads, label, onClose }) {
                 const wsColors = l.workStatus === "Working Professional"
                   ? "bg-emerald-50 text-emerald-700"
                   : l.workStatus === "Fresher"
-                  ? "bg-indigo-50 text-indigo-700"
-                  : "bg-gray-50 text-gray-600"
+                    ? "bg-indigo-50 text-indigo-700"
+                    : "bg-gray-50 text-gray-600"
                 return (
                   <tr key={i} className={`border-b border-gray-50 hover:bg-blue-50/30 transition-colors ${i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}`}>
                     <td className="px-3 py-2 text-gray-400 font-semibold">{i + 1}</td>
@@ -2145,7 +2185,7 @@ function PaidAppsDrawer({ leads, label, onClose }) {
                     <td className="px-3 py-2 text-gray-600 max-w-[140px] truncate" title={l.role}>{l.role}</td>
                     <td className="px-3 py-2 text-gray-600 whitespace-nowrap">{fmtPaidDate(l.paidOn)}</td>
                     <td className="px-3 py-2 text-center font-bold whitespace-nowrap"
-                        style={{ color: l.daysToConvert === null ? "#94a3b8" : l.daysToConvert <= 3 ? "#059669" : l.daysToConvert <= 14 ? "#D97706" : "#DC2626" }}>
+                      style={{ color: l.daysToConvert === null ? "#94a3b8" : l.daysToConvert <= 3 ? "#059669" : l.daysToConvert <= 14 ? "#D97706" : "#DC2626" }}>
                       {l.daysToConvert !== null ? `${l.daysToConvert}d` : "—"}
                     </td>
                   </tr>
@@ -2160,19 +2200,19 @@ function PaidAppsDrawer({ leads, label, onClose }) {
 }
 
 function PaidAppsPanel({ appRows }) {
-  const [viewMode,   setViewMode]   = useState("overall")
-  const [weekStart,  setWeekStart]  = useState(() => paidGetDefaultWeekStart())
+  const [viewMode, setViewMode] = useState("overall")
+  const [weekStart, setWeekStart] = useState(() => paidGetDefaultWeekStart())
   const [drawerOpen, setDrawerOpen] = useState(false)
-  const [drillAttr,  setDrillAttr]  = useState(null)
+  const [drillAttr, setDrillAttr] = useState(null)
 
   const allPaid = useMemo(() =>
     (appRows || []).slice(1).map(row => { try { return parsePaidAppRow(row) } catch { return null } }).filter(Boolean)
-  , [appRows])
+    , [appRows])
 
   const weekLeads = useMemo(() => {
     if (viewMode === "overall") return allPaid
     const start = new Date(weekStart); start.setHours(0, 0, 0, 0)
-    const end   = new Date(weekStart); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
+    const end = new Date(weekStart); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
     return allPaid.filter(l => l.paidOn && l.paidOn >= start && l.paidOn <= end)
   }, [allPaid, weekStart, viewMode])
 
@@ -2183,7 +2223,7 @@ function PaidAppsPanel({ appRows }) {
     const weeks = []
     for (let i = 7; i >= 0; i--) {
       const start = new Date(thisMonday); start.setDate(start.getDate() - i * 7); start.setHours(0, 0, 0, 0)
-      const end   = new Date(start); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
+      const end = new Date(start); end.setDate(end.getDate() + 6); end.setHours(23, 59, 59, 999)
       const count = allPaid.filter(l => l.paidOn && l.paidOn >= start && l.paidOn <= end).length
       weeks.push({ name: fmtPaidDate(start).slice(0, -5), count })
     }
@@ -2191,17 +2231,17 @@ function PaidAppsPanel({ appRows }) {
   }, [allPaid])
 
   const attrs = useMemo(() => ({
-    source:     paidGroupRank(weekLeads, "source"),
-    medium:     paidGroupRank(weekLeads, "medium"),
+    source: paidGroupRank(weekLeads, "source"),
+    medium: paidGroupRank(weekLeads, "medium"),
     counsellor: paidGroupRank(weekLeads, "counsellor"),
     workStatus: paidGroupRank(weekLeads, "workStatus"),
-    city:       paidGroupRank(weekLeads, "city"),
-    state:      paidGroupRank(weekLeads, "state"),
-    gradYear:   paidGroupRank(weekLeads, "gradYear"),
-    degree:     paidGroupRank(weekLeads, "degree"),
-    college:    paidGroupRank(weekLeads, "college"),
-    company:    paidGroupRank(weekLeads, "company"),
-    role:       paidGroupRank(weekLeads, "role"),
+    city: paidGroupRank(weekLeads, "city"),
+    state: paidGroupRank(weekLeads, "state"),
+    gradYear: paidGroupRank(weekLeads, "gradYear"),
+    degree: paidGroupRank(weekLeads, "degree"),
+    college: paidGroupRank(weekLeads, "college"),
+    company: paidGroupRank(weekLeads, "company"),
+    role: paidGroupRank(weekLeads, "role"),
     daysBucket: paidGroupDaysBuckets(weekLeads),
   }), [weekLeads])
 
@@ -2212,7 +2252,7 @@ function PaidAppsPanel({ appRows }) {
   }, [weekLeads])
 
   const thisMonday = paidGetWeekMonday(new Date())
-  const atPresent  = weekStart >= thisMonday
+  const atPresent = weekStart >= thisMonday
   function shiftWeek(n) { const d = new Date(weekStart); d.setDate(d.getDate() + n * 7); setWeekStart(d) }
 
   const viewLabel = viewMode === "overall" ? "All Time" : fmtPaidWeekLabel(weekStart)
@@ -2236,9 +2276,8 @@ function PaidAppsPanel({ appRows }) {
         <div className="flex bg-gray-100 rounded-xl p-1 gap-1">
           {[["weekly", "📅 Weekly"], ["overall", "🌍 Overall"]].map(([k, l]) => (
             <button key={k} onClick={() => setViewMode(k)}
-                    className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${
-                      viewMode === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-                    }`}>
+              className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all ${viewMode === k ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+                }`}>
               {l}
             </button>
           ))}
@@ -2247,16 +2286,15 @@ function PaidAppsPanel({ appRows }) {
         {viewMode === "weekly" && (
           <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-xl px-4 py-2 shadow-sm">
             <button onClick={() => shiftWeek(-1)}
-                    className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition text-lg font-bold">
+              className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-gray-100 text-gray-600 transition text-lg font-bold">
               ‹
             </button>
             <span className="text-sm font-semibold text-gray-800 px-2 whitespace-nowrap">
               {fmtPaidWeekLabel(weekStart)}
             </span>
             <button onClick={() => !atPresent && shiftWeek(1)}
-                    className={`w-7 h-7 flex items-center justify-center rounded-lg transition text-lg font-bold ${
-                      atPresent ? "text-gray-300 cursor-not-allowed" : "hover:bg-gray-100 text-gray-600"
-                    }`}>
+              className={`w-7 h-7 flex items-center justify-center rounded-lg transition text-lg font-bold ${atPresent ? "text-gray-300 cursor-not-allowed" : "hover:bg-gray-100 text-gray-600"
+                }`}>
               ›
             </button>
           </div>
@@ -2265,24 +2303,24 @@ function PaidAppsPanel({ appRows }) {
 
       {/* Hero card */}
       <div onClick={() => total > 0 && setDrawerOpen(true)}
-           className="rounded-2xl p-7 flex items-center justify-between transition-all"
-           style={{
-             background: total > 0
-               ? "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)"
-               : "#F8FAFC",
-             border: total > 0 ? "none" : "1px solid #E2E8F0",
-             cursor: total > 0 ? "pointer" : "default",
-             filter: "brightness(1)",
-           }}
-           onMouseEnter={e => total > 0 && (e.currentTarget.style.filter = "brightness(1.06)")}
-           onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}>
+        className="rounded-2xl p-7 flex items-center justify-between transition-all"
+        style={{
+          background: total > 0
+            ? "linear-gradient(135deg, #1E1B4B 0%, #312E81 50%, #4338CA 100%)"
+            : "#F8FAFC",
+          border: total > 0 ? "none" : "1px solid #E2E8F0",
+          cursor: total > 0 ? "pointer" : "default",
+          filter: "brightness(1)",
+        }}
+        onMouseEnter={e => total > 0 && (e.currentTarget.style.filter = "brightness(1.06)")}
+        onMouseLeave={e => (e.currentTarget.style.filter = "brightness(1)")}>
         <div>
           <div className="text-xs font-bold tracking-widest mb-3"
-               style={{ color: total > 0 ? "#A5B4FC" : "#94A3B8" }}>
+            style={{ color: total > 0 ? "#A5B4FC" : "#94A3B8" }}>
             {viewMode === "overall" ? "ALL TIME · PAID APPS" : "PAID APPS THIS WEEK"}
           </div>
           <div className="text-6xl font-extrabold leading-none"
-               style={{ color: total > 0 ? "#FFFFFF" : "#CBD5E1" }}>
+            style={{ color: total > 0 ? "#FFFFFF" : "#CBD5E1" }}>
             {total}
           </div>
           <div className="text-sm mt-3" style={{ color: total > 0 ? "#C7D2FE" : "#94A3B8" }}>
@@ -2297,9 +2335,9 @@ function PaidAppsPanel({ appRows }) {
                 const meta = PA_COUNSELLOR_COLORS[name]
                 return (
                   <div key={name} className="flex items-center gap-2 px-3 py-1.5 rounded-lg"
-                       style={{ background: "rgba(255,255,255,.15)" }}>
+                    style={{ background: "rgba(255,255,255,.15)" }}>
                     <span className="w-2 h-2 rounded-full flex-shrink-0"
-                          style={{ background: meta?.color || "#a5b4fc" }} />
+                      style={{ background: meta?.color || "#a5b4fc" }} />
                     <span className="text-xs font-medium" style={{ color: "rgba(255,255,255,.8)" }}>
                       {name.split(" ")[0]}
                     </span>
@@ -2309,7 +2347,7 @@ function PaidAppsPanel({ appRows }) {
               })}
             </div>
             <div className="flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
-                 style={{ background: "rgba(255,255,255,.2)", color: "#E0E7FF" }}>
+              style={{ background: "rgba(255,255,255,.2)", color: "#E0E7FF" }}>
               📋 View {total} records →
             </div>
           </div>
@@ -2342,8 +2380,8 @@ function PaidAppsPanel({ appRows }) {
             if (!data || data.length === 0) return null
             return (
               <div key={field}
-                   className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all"
-                   onClick={() => setDrillAttr({ field, title, icon, accent })}>
+                className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 cursor-pointer hover:shadow-md hover:border-gray-300 transition-all"
+                onClick={() => setDrillAttr({ field, title, icon, accent })}>
                 <div className="flex items-center justify-between mb-4">
                   <div className="text-sm font-semibold text-gray-800">{icon} {title}</div>
                   <span className="text-xs text-gray-400 bg-gray-50 border border-gray-200 rounded-md px-2 py-0.5">
@@ -2407,9 +2445,9 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
         </div>
         <div className="flex items-center gap-3">
           <input type="date" value={date} onChange={e => setDate(e.target.value)}
-                 className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+            className="border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500" />
           <button onClick={onDrill}
-                  className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
+            className="px-4 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-sm font-medium transition">
             Detailed Analysis →
           </button>
         </div>
@@ -2419,13 +2457,13 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
         <>
           {/* KPI row */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <KPICard label="Total Calls"    value={s.total}         sub="all counsellors"    icon="📞" />
-            <KPICard label="Connected"      value={`${s.connected} (${s.connPct ?? 0}%)`}
-                     sub="of outgoing"
-                     color={s.connPct >= 40 ? "#16a34a" : s.connPct >= 20 ? "#d97706" : "#dc2626"}
-                     icon="✅" />
-            <KPICard label="Total Duration" value={`${s.totalDur}m`} sub="outgoing calls"  icon="⏱" />
-            <KPICard label="Avg / Call"     value={`${s.avgDur}m`}   sub="connected only"  icon="📊" />
+            <KPICard label="Total Calls" value={s.total} sub="all counsellors" icon="📞" />
+            <KPICard label="Connected" value={`${s.connected} (${s.connPct ?? 0}%)`}
+              sub="of outgoing"
+              color={s.connPct >= 40 ? "#16a34a" : s.connPct >= 20 ? "#d97706" : "#dc2626"}
+              icon="✅" />
+            <KPICard label="Total Duration" value={`${s.totalDur}m`} sub="outgoing calls" icon="⏱" />
+            <KPICard label="Avg / Call" value={`${s.avgDur}m`} sub="connected only" icon="📊" />
           </div>
 
           {/* Charts row */}
@@ -2440,14 +2478,14 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
 
           {/* Counsellor cards */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {MAIN_COUNSELLORS.map(c => {
+            {orderCols(allRows.map(r => r.empName)).map(c => {
               const cs = computeStats(allRows.filter(r => r.empName === c.key))
               return (
                 <div key={c.key} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 hover:shadow-md transition-shadow cursor-pointer"
-                     onClick={onDrill}>
+                  onClick={onDrill}>
                   <div className="flex items-center gap-3 mb-4">
                     <div className="w-10 h-10 rounded-full flex items-center justify-center font-bold text-sm text-white"
-                         style={{ background: c.color }}>
+                      style={{ background: c.color }}>
                       {c.short[0]}
                     </div>
                     <div>
@@ -2456,7 +2494,7 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
                     </div>
                     {cs && (
                       <span className="ml-auto text-xs font-semibold px-2 py-0.5 rounded-full"
-                            style={{ background: c.bg, color: c.color }}>
+                        style={{ background: c.bg, color: c.color }}>
                         {cs.outgoing} out
                       </span>
                     )}
@@ -2471,10 +2509,10 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
                       </div>
                       <ProgressBar pct={cs.connPct} color={c.color} />
                       <div className="pt-2 space-y-1">
-                        <StatChip label="Total calls" value={cs.total}        color={c.color} />
-                        <StatChip label="Missed"      value={cs.missed}       color="#ef4444" />
-                        <StatChip label="Duration"    value={`${cs.totalDur}m`} color="#64748b" />
-                        <StatChip label="Avg / call"  value={`${cs.avgDur}m`}   color="#64748b" />
+                        <StatChip label="Total calls" value={cs.total} color={c.color} />
+                        <StatChip label="Missed" value={cs.missed} color="#ef4444" />
+                        <StatChip label="Duration" value={`${cs.totalDur}m`} color="#64748b" />
+                        <StatChip label="Avg / call" value={`${cs.avgDur}m`} color="#64748b" />
                       </div>
                     </div>
                   ) : (
@@ -2505,9 +2543,9 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
 function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initialSubTab = "charts", onBack, appRows }) {
   const [mainTab, setMainTab] = useState("overall")
   const [section, setSection] = useState("all")
-  const [source,  setSource]  = useState("all")
-  const [subTab,  setSubTab]  = useState(initialSubTab)
-  const [drill,   setDrill]   = useState(null)
+  const [source, setSource] = useState("all")
+  const [subTab, setSubTab] = useState(initialSubTab)
+  const [drill, setDrill] = useState(null)
 
   const openDrill = useCallback((title, rows, type) => setDrill({ title, rows, type }), [])
 
@@ -2544,7 +2582,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
       <div className="bg-white border-b border-gray-200 px-5 py-3 flex items-center justify-between flex-wrap gap-3 sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack}
-                  className="text-xs text-gray-500 hover:text-gray-800 transition flex items-center gap-1">
+            className="text-xs text-gray-500 hover:text-gray-800 transition flex items-center gap-1">
             ← Overview
           </button>
           <span className="text-gray-200">|</span>
@@ -2564,16 +2602,15 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Counsellor tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-1 overflow-x-auto">
-        {[["overall","Overall"], ...ALL_COLS.map(c => [c.key, c.short])].map(([k, l]) => {
+        {[["overall", "Overall"], ...orderCols([allRows.map(r => r.empName), pipelineRows.map(r => r.counsellor)]).map(c => [c.key, c.short])].map(([k, l]) => {
           const meta = k !== "overall" ? colMeta(k) : null
           const isActive = mainTab === k
           return (
             <button key={k}
-                    onClick={() => { setMainTab(k); setSubTab("charts") }}
-                    className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
-                      isActive ? "border-gray-900 text-gray-900" : "border-transparent text-gray-400 hover:text-gray-600"
-                    }`}
-                    style={isActive && meta ? { borderColor: meta.color, color: meta.color } : {}}>
+              onClick={() => { setMainTab(k); setSubTab("charts") }}
+              className={`px-4 py-3 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${isActive ? "border-gray-900 text-gray-900" : "border-transparent text-gray-400 hover:text-gray-600"
+                }`}
+              style={isActive && meta ? { borderColor: meta.color, color: meta.color } : {}}>
               {l}
             </button>
           )
@@ -2600,13 +2637,12 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts","📊 Charts"], ["table","📋 Pivot Table"], ["pipeline","🎯 Pipeline"], ["ai","✦ AI Insights"], ["paid-apps","💰 Paid Apps"], ["transcripts","🎙️ Transcripts"]].map(([k,l]) => (
+        {[["charts", "📊 Charts"], ["table", "📋 Pivot Table"], ["pipeline", "🎯 Pipeline"], ["ai", "✦ AI Insights"], ["paid-apps", "💰 Paid Apps"], ["transcripts", "🎙️ Transcripts"]].map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                    subTab === k
-                      ? "bg-gray-900 text-white"
-                      : "bg-gray-100 hover:bg-gray-200 text-gray-600"
-                  }`}>
+            className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${subTab === k
+                ? "bg-gray-900 text-white"
+                : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+              }`}>
             {l}
           </button>
         ))}
@@ -2673,13 +2709,13 @@ function mergeOverviewResults(results) {
       const total = prev.calls + s.calls
       const w1 = prev.calls / total, w2 = s.calls / total
       const avg = f => +(prev[f] * w1 + s[f] * w2).toFixed(1)
-      prev.discovery   = avg('discovery')
-      prev.listening   = avg('listening')
+      prev.discovery = avg('discovery')
+      prev.listening = avg('listening')
       prev.objHandling = avg('objHandling')
-      prev.nextStep    = avg('nextStep')
-      prev.ethics      = avg('ethics')
-      prev.avgOverall  = avg('avgOverall')
-      prev.calls       = total
+      prev.nextStep = avg('nextStep')
+      prev.ethics = avg('ethics')
+      prev.avgOverall = avg('avgOverall')
+      prev.calls = total
       const a = prev.avgOverall
       prev.grade = a >= 4.5 ? 'A' : a >= 3.5 ? 'B' : a >= 2.5 ? 'C' : a >= 1.5 ? 'D' : 'F'
     }
@@ -2709,11 +2745,11 @@ function mergeOverviewResults(results) {
   }
 
   return {
-    scorecard:       [...cMap.values()],
+    scorecard: [...cMap.values()],
     topRedFlags,
     overallSentiment,
-    topObjections:   mergeList('topObjections'),
-    keyThemes:       mergeList('keyThemes'),
+    topObjections: mergeList('topObjections'),
+    keyThemes: mergeList('keyThemes'),
   }
 }
 
@@ -2721,16 +2757,16 @@ async function fetchTranscriptOverview(transcripts, texts, dateStr) {
   if (!texts.length) return null
 
   const block = transcripts.slice(0, texts.length).map((t, i) => {
-    const info   = t.leadInfo
-    const name   = info?.name   || t.customerPhone
+    const info = t.leadInfo
+    const name = info?.name || t.customerPhone
     const source = info?.source || 'Unknown'
-    const stage  = info?.stage  || 'Unknown'
-    const text   = (texts[i] || '').replace(/[\r\n]+/g, ' ').slice(0, 600)
-    return `--- Call ${i+1}: ${name} | Counsellor: ${t.counsellor} | Source: ${source} | Stage: ${stage} ---\n${text}`
+    const stage = info?.stage || 'Unknown'
+    const text = (texts[i] || '').replace(/[\r\n]+/g, ' ').slice(0, 600)
+    return `--- Call ${i + 1}: ${name} | Counsellor: ${t.counsellor} | Source: ${source} | Stage: ${stage} ---\n${text}`
   }).join('\n\n')
 
   const prompt =
-`You are a senior admissions quality analyst reviewing calls from Masters Union (AI & Advanced Analytics program, ₹22.65L fee).
+    `You are a senior admissions quality analyst reviewing calls from Masters Union (AI & Advanced Analytics program, ₹22.65L fee).
 Period: ${dateStr}. Total calls: ${texts.length}.
 
 ${block}
@@ -2783,21 +2819,21 @@ Red flag rules:
   topObjections max 5 · keyThemes max 5 · overallSentiment: positive | neutral | negative`
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
+    method: 'POST',
     headers: {
-      'Content-Type':   'application/json',
-      'x-api-key':      import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+      'Content-Type': 'application/json',
+      'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY || '',
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model:      'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 8192,
-      messages:   [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: prompt }],
     }),
   })
   if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
-  const d   = await r.json()
+  const d = await r.json()
   const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
   const parsed = robustJSONParse(raw)
   // Attach the customer phone number to each red flag via its callIndex,
@@ -2812,12 +2848,12 @@ Red flag rules:
 }
 
 async function fetchTranscriptLeadAnalysis(text, leadInfo) {
-  const name   = leadInfo?.name   || 'Unknown'
+  const name = leadInfo?.name || 'Unknown'
   const source = leadInfo?.source || 'Unknown'
-  const stage  = leadInfo?.stage  || 'Unknown'
+  const stage = leadInfo?.stage || 'Unknown'
 
   const prompt =
-`You are a senior admissions quality analyst. Analyse this Masters Union call transcript.
+    `You are a senior admissions quality analyst. Analyse this Masters Union call transcript.
 Lead: ${name} | Source: ${source} | Stage: ${stage}
 
 TRANSCRIPT:
@@ -2862,21 +2898,21 @@ quality: Excellent|Good|Partially|Bad — only include redFlags where quality=Ba
 IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call because the lead was weak in English or communicated only in Hindi. English proficiency is a basic requirement for the ₹25L PGP program in Gurgaon — staging such leads as "language barrier" and not pursuing them is correct protocol, not a red flag.`
 
   const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method:  'POST',
+    method: 'POST',
     headers: {
-      'Content-Type':   'application/json',
-      'x-api-key':      import.meta.env.VITE_ANTHROPIC_API_KEY || '',
+      'Content-Type': 'application/json',
+      'x-api-key': import.meta.env.VITE_ANTHROPIC_API_KEY || '',
       'anthropic-version': '2023-06-01',
       'anthropic-dangerous-direct-browser-access': 'true',
     },
     body: JSON.stringify({
-      model:      'claude-sonnet-4-6',
+      model: 'claude-sonnet-4-6',
       max_tokens: 2048,
-      messages:   [{ role: 'user', content: prompt }],
+      messages: [{ role: 'user', content: prompt }],
     }),
   })
   if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
-  const d   = await r.json()
+  const d = await r.json()
   const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
   return robustJSONParse(raw)
 }
@@ -2887,37 +2923,37 @@ IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call be
 
 const QUALITY_META = {
   Excellent: { bg: 'bg-green-50', text: 'text-green-700', border: 'border-green-200' },
-  Good:      { bg: 'bg-blue-50',  text: 'text-blue-700',  border: 'border-blue-200'  },
+  Good: { bg: 'bg-blue-50', text: 'text-blue-700', border: 'border-blue-200' },
   Partially: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },
-  Bad:       { bg: 'bg-red-50',   text: 'text-red-700',   border: 'border-red-200'   },
+  Bad: { bg: 'bg-red-50', text: 'text-red-700', border: 'border-red-200' },
 }
 
 const GRADE_META = {
-  A: { bg: 'bg-green-100',  text: 'text-green-800'  },
-  B: { bg: 'bg-blue-100',   text: 'text-blue-800'   },
-  C: { bg: 'bg-amber-100',  text: 'text-amber-800'  },
+  A: { bg: 'bg-green-100', text: 'text-green-800' },
+  B: { bg: 'bg-blue-100', text: 'text-blue-800' },
+  C: { bg: 'bg-amber-100', text: 'text-amber-800' },
   D: { bg: 'bg-orange-100', text: 'text-orange-800' },
-  F: { bg: 'bg-red-100',    text: 'text-red-800'    },
+  F: { bg: 'bg-red-100', text: 'text-red-800' },
 }
 
 const SCORE_FIELDS = [
-  { key: 'discovery',   label: 'Discovery'    },
-  { key: 'listening',   label: 'Listening'    },
+  { key: 'discovery', label: 'Discovery' },
+  { key: 'listening', label: 'Listening' },
   { key: 'objHandling', label: 'Obj Handling' },
-  { key: 'nextStep',    label: 'Next Step'    },
-  { key: 'ethics',      label: 'Ethics'       },
+  { key: 'nextStep', label: 'Next Step' },
+  { key: 'ethics', label: 'Ethics' },
 ]
 
 const CAT_COLOR = {
-  'Fee':                   'bg-red-100 text-red-700',
-  'Intent':                'bg-orange-100 text-orange-700',
-  'Timing':                'bg-amber-100 text-amber-700',
-  'Program fit':           'bg-purple-100 text-purple-700',
+  'Fee': 'bg-red-100 text-red-700',
+  'Intent': 'bg-orange-100 text-orange-700',
+  'Timing': 'bg-amber-100 text-amber-700',
+  'Program fit': 'bg-purple-100 text-purple-700',
   'Scholarship threshold': 'bg-cyan-100 text-cyan-700',
-  'Family gatekeeper':     'bg-blue-100 text-blue-700',
-  'Trust':                 'bg-pink-100 text-pink-700',
-  'Operational':           'bg-gray-100 text-gray-700',
-  'Other':                 'bg-slate-100 text-slate-700',
+  'Family gatekeeper': 'bg-blue-100 text-blue-700',
+  'Trust': 'bg-pink-100 text-pink-700',
+  'Operational': 'bg-gray-100 text-gray-700',
+  'Other': 'bg-slate-100 text-slate-700',
 }
 
 function scoreColor(v) {
@@ -2930,15 +2966,15 @@ function scoreColor(v) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TranscriptCard({ t, onAnalyse, analysis, readText }) {
-  const [expanded,  setExpanded]  = useState(false)
+  const [expanded, setExpanded] = useState(false)
   const [analysing, setAnalysing] = useState(false)
 
-  const info       = t.leadInfo
-  const name       = info?.name   || `···${t.customerPhone.slice(-4)}`
-  const source     = info?.source || '—'
-  const stage      = info?.stage  || '—'
-  const intentClr  = { high: '#16a34a', medium: '#d97706', low: '#6b7280' }
-  const fmtTime    = s => (s && s.length >= 6) ? `${s.slice(0,2)}:${s.slice(2,4)}` : (s || '')
+  const info = t.leadInfo
+  const name = info?.name || `···${t.customerPhone.slice(-4)}`
+  const source = info?.source || '—'
+  const stage = info?.stage || '—'
+  const intentClr = { high: '#16a34a', medium: '#d97706', low: '#6b7280' }
+  const fmtTime = s => (s && s.length >= 6) ? `${s.slice(0, 2)}:${s.slice(2, 4)}` : (s || '')
 
   const handleExpand = async () => {
     const nowOpen = !expanded
@@ -2950,9 +2986,9 @@ function TranscriptCard({ t, onAnalyse, analysis, readText }) {
   }
 
   const likelihood = analysis?.conversionLikelihood
-  const lhColor    = likelihood >= 60 ? '#16a34a' : likelihood >= 35 ? '#d97706' : '#6b7280'
-  const sc         = analysis?.scorecard
-  const gm         = sc?.grade ? GRADE_META[sc.grade] || GRADE_META.D : null
+  const lhColor = likelihood >= 60 ? '#16a34a' : likelihood >= 35 ? '#d97706' : '#6b7280'
+  const sc = analysis?.scorecard
+  const gm = sc?.grade ? GRADE_META[sc.grade] || GRADE_META.D : null
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
@@ -2964,7 +3000,7 @@ function TranscriptCard({ t, onAnalyse, analysis, readText }) {
               <span className="text-sm font-semibold text-gray-800 truncate max-w-[200px]" title={name}>{name}</span>
               {analysis && (
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: `${intentClr[analysis.intentLevel]}18`, color: intentClr[analysis.intentLevel] }}>
+                  style={{ background: `${intentClr[analysis.intentLevel]}18`, color: intentClr[analysis.intentLevel] }}>
                   {(analysis.intentLevel || '').toUpperCase()} intent
                 </span>
               )}
@@ -3063,8 +3099,8 @@ function TranscriptCard({ t, onAnalyse, analysis, readText }) {
                     Red Flags ({analysis.redFlags.length})
                   </div>
                   {analysis.redFlags.map((f, i) => {
-                    const qm  = QUALITY_META[f.quality] || QUALITY_META.Partially
-                    const cat = CAT_COLOR[f.category]   || 'bg-gray-100 text-gray-700'
+                    const qm = QUALITY_META[f.quality] || QUALITY_META.Partially
+                    const cat = CAT_COLOR[f.category] || 'bg-gray-100 text-gray-700'
                     return (
                       <div key={i} className={`rounded-lg border p-3 ${qm.bg} ${qm.border}`}>
                         <div className="flex items-center gap-1.5 mb-1.5">
@@ -3105,22 +3141,22 @@ function TranscriptCard({ t, onAnalyse, analysis, readText }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
-  const [viewMode,         setViewMode]         = useState('daily')   // 'daily' | 'monthly'
-  const [dateFilter,       setDateFilter]       = useState(propDate)
-  const [monthFilter,      setMonthFilter]      = useState(() => propDate.slice(0, 7))
+  const [viewMode, setViewMode] = useState('daily')   // 'daily' | 'monthly'
+  const [dateFilter, setDateFilter] = useState(propDate)
+  const [monthFilter, setMonthFilter] = useState(() => propDate.slice(0, 7))
   const [counsellorFilter, setCounsellorFilter] = useState(mainTab !== 'overall' ? mainTab : 'all')
-  const [sourceFilter,     setSourceFilter]     = useState('all')
-  const [detailSearch,     setDetailSearch]     = useState('')
-  const [viewTab,          setViewTab]          = useState('overview')
+  const [sourceFilter, setSourceFilter] = useState('all')
+  const [detailSearch, setDetailSearch] = useState('')
+  const [viewTab, setViewTab] = useState('overview')
 
-  const [loading,          setLoading]          = useState(false)
-  const [error,            setError]            = useState('')
-  const [transcripts,      setTranscripts]      = useState([])
-  const [readCache,        setReadCache]        = useState({})
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [transcripts, setTranscripts] = useState([])
+  const [readCache, setReadCache] = useState({})
   const [overviewInsights, setOverviewInsights] = useState(null)
-  const [overviewLoading,  setOverviewLoading]  = useState(false)
-  const [overviewErr,      setOverviewErr]      = useState('')
-  const [perLeadCache,     setPerLeadCache]     = useState({})
+  const [overviewLoading, setOverviewLoading] = useState(false)
+  const [overviewErr, setOverviewErr] = useState('')
+  const [perLeadCache, setPerLeadCache] = useState({})
 
   // Auto-load whenever active date/month, counsellor, or mode changes
   useEffect(() => {
@@ -3169,9 +3205,9 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
       return top ? { label: top[0], count: top[1] } : null
     }
     return {
-      topSource:     topOf('source'),
+      topSource: topOf('source'),
       topCounsellor: topOf('counsellor'),
-      topCity:       topOf('city'),
+      topCity: topOf('city'),
     }
   }, [filtered])
 
@@ -3186,9 +3222,9 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
   async function aiCacheSet(key, result) {
     try {
       await fetch('/api/ai-cache', {
-        method:  'POST',
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ key, result }),
+        body: JSON.stringify({ key, result }),
       })
     } catch { /* non-fatal */ }
   }
@@ -3204,7 +3240,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
     try {
       const ps = new URLSearchParams({ action: 'list' })
       if (viewMode === 'monthly') ps.set('month', monthFilter)
-      else                        ps.set('date',  dateFilter)
+      else ps.set('date', dateFilter)
       if (counsellorFilter !== 'all') ps.set('counsellor', counsellorFilter)
       const r = await fetch(`/api/drive?${ps}`)
       if (!r.ok) {
@@ -3223,8 +3259,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
 
       // Auto-load cached insights for this date — no button needed if already analysed
       if (enriched.length) {
-        const label  = viewMode === 'monthly' ? monthFilter : dateFilter
-        const cKey   = `transcript_overview:${counsellorFilter}:${label}`
+        const label = viewMode === 'monthly' ? monthFilter : dateFilter
+        const cKey = `transcript_overview:${counsellorFilter}:${label}`
         const cached = await aiCacheGet(cKey)
         if (cached) setOverviewInsights(cached)
       }
@@ -3242,8 +3278,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
     setOverviewErr('')
     setOverviewInsights(null)
     try {
-      const label    = viewMode === 'monthly' ? monthFilter : dateFilter
-      const cKey     = `transcript_overview:${counsellorFilter}:${label}`
+      const label = viewMode === 'monthly' ? monthFilter : dateFilter
+      const cKey = `transcript_overview:${counsellorFilter}:${label}`
 
       // 1. Check permanent AI cache (skipped when Re-analyse is clicked)
       if (!skipCache) {
@@ -3259,8 +3295,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
       const BATCH = 50
       const allTexts = await Promise.all(filtered.map(async t => {
         if (readCache[t.fileId]) return readCache[t.fileId]
-        const r   = await fetch(`/api/drive?action=read&fileId=${t.fileId}`)
-        const d   = await r.json()
+        const r = await fetch(`/api/drive?action=read&fileId=${t.fileId}`)
+        const d = await r.json()
         const txt = d.text || ''
         setReadCache(c => ({ ...c, [t.fileId]: txt }))
         return txt
@@ -3293,7 +3329,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
     if (!t) return
 
     // 1. Check permanent AI cache
-    const cKey   = `transcript_lead:${fileId}`
+    const cKey = `transcript_lead:${fileId}`
     const cached = await aiCacheGet(cKey)
     if (cached) {
       setPerLeadCache(c => ({ ...c, [fileId]: cached }))
@@ -3304,7 +3340,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
     if (!text) {
       const r = await fetch(`/api/drive?action=read&fileId=${fileId}`)
       const d = await r.json()
-      text    = d.text || ''
+      text = d.text || ''
       setReadCache(c => ({ ...c, [fileId]: text }))
     }
     const analysis = await fetchTranscriptLeadAnalysis(text, t.leadInfo)
@@ -3323,17 +3359,16 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
         <span className="text-sm font-semibold text-gray-700">🎙️ Transcriptions</span>
         {/* Daily / Monthly toggle */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
-          {[['daily','Daily'], ['monthly','Monthly']].map(([k, l]) => (
+          {[['daily', 'Daily'], ['monthly', 'Monthly']].map(([k, l]) => (
             <button key={k} onClick={() => setViewMode(k)}
-                    className={`px-3 py-1.5 text-xs font-medium transition ${
-                      viewMode === k ? 'bg-gray-900 text-white' : 'bg-white hover:bg-gray-50 text-gray-600'
-                    }`}>
+              className={`px-3 py-1.5 text-xs font-medium transition ${viewMode === k ? 'bg-gray-900 text-white' : 'bg-white hover:bg-gray-50 text-gray-600'
+                }`}>
               {l}
             </button>
           ))}
         </div>
         {viewMode === 'daily'
-          ? <input type="date"  value={dateFilter}  onChange={e => setDateFilter(e.target.value)}  className={selCls} />
+          ? <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className={selCls} />
           : <input type="month" value={monthFilter} onChange={e => setMonthFilter(e.target.value)} className={selCls} />
         }
         <select value={counsellorFilter} onChange={e => setCounsellorFilter(e.target.value)} className={selCls}>
@@ -3360,11 +3395,10 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
         <>
           {/* Sub-view toggle */}
           <div className="flex gap-2">
-            {[['overview','📊 Overview'], ['detailed','📋 Detailed View']].map(([k, l]) => (
+            {[['overview', '📊 Overview'], ['detailed', '📋 Detailed View']].map(([k, l]) => (
               <button key={k} onClick={() => setViewTab(k)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                        viewTab === k ? 'bg-emerald-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
-                      }`}>
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${viewTab === k ? 'bg-emerald-600 text-white' : 'bg-gray-100 hover:bg-gray-200 text-gray-600'
+                  }`}>
                 {l}
               </button>
             ))}
@@ -3406,7 +3440,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                     Read and analyse all {filtered.length} transcripts with Claude — objections, themes, counselling performance
                   </div>
                   <button onClick={runOverview}
-                          className="px-5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition">
+                    className="px-5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition">
                     ✦ Load Insights
                   </button>
                 </div>
@@ -3479,8 +3513,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
 
                   {/* ── Red Flag Category Matrix ── */}
                   {(overviewInsights.topRedFlags || []).length > 0 && (() => {
-                    const ALL_CATS = ['Fee','Intent','Timing','Program fit','Scholarship threshold','Family gatekeeper','Trust','Operational','Other']
-                    const flags    = overviewInsights.topRedFlags || []
+                    const ALL_CATS = ['Fee', 'Intent', 'Timing', 'Program fit', 'Scholarship threshold', 'Family gatekeeper', 'Trust', 'Operational', 'Other']
+                    const flags = overviewInsights.topRedFlags || []
                     // Collect unique counsellors from flags
                     const counsellors = [...new Set(flags.map(f => f.counsellor).filter(Boolean))].sort()
                     // Build count matrix
@@ -3492,7 +3526,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                     })
                     flags.forEach(f => {
                       const cat = ALL_CATS.includes(f.category) ? f.category : 'Other'
-                      const c   = f.counsellor
+                      const c = f.counsellor
                       if (!matrix[cat]) return
                       if (c && matrix[cat][c] !== undefined) matrix[cat][c]++
                       matrix[cat].__total++
@@ -3549,7 +3583,7 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                     <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">
                       <div className="px-5 py-3 border-b border-gray-100">
                         <span className="text-sm font-semibold text-gray-800">🚩 Red Flags — All Concerning Moments</span>
-                          <span className="text-xs text-gray-400">{overviewInsights.topRedFlags.length} flags</span>
+                        <span className="text-xs text-gray-400">{overviewInsights.topRedFlags.length} flags</span>
                       </div>
                       <div className="overflow-x-auto">
                         <table className="w-full text-xs">
@@ -3567,8 +3601,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
                           </thead>
                           <tbody>
                             {overviewInsights.topRedFlags.map((f, i) => {
-                              const qm  = QUALITY_META[f.quality] || QUALITY_META.Partially
-                              const cat = CAT_COLOR[f.category]   || 'bg-gray-100 text-gray-700'
+                              const qm = QUALITY_META[f.quality] || QUALITY_META.Partially
+                              const cat = CAT_COLOR[f.category] || 'bg-gray-100 text-gray-700'
                               return (
                                 <tr key={i} className="border-t border-gray-50 hover:bg-gray-50 align-top">
                                   <td className="px-4 py-3 font-medium text-gray-800 whitespace-nowrap">{f.customer}</td>
@@ -3698,8 +3732,8 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
 export default function AdminInsights() {
   const [params, setParams] = useSearchParams()
   const DEFAULT_DATE = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10) })()
-  const view         = params.get('ai_view')   || 'overview'
-  const date         = params.get('ai_date')   || DEFAULT_DATE
+  const view = params.get('ai_view') || 'overview'
+  const date = params.get('ai_date') || DEFAULT_DATE
   const detailSubTab = params.get('ai_subtab') || 'charts'
 
   const setView = useCallback((v) => setParams(p => {
@@ -3724,7 +3758,7 @@ export default function AdminInsights() {
     netCounseled: 0,
   })
   const [loading, setLoading] = useState(true)
-  const [error,   setError]   = useState("")
+  const [error, setError] = useState("")
   const [diagInfo, setDiagInfo] = useState(null)
 
   useEffect(() => {
@@ -3747,7 +3781,7 @@ export default function AdminInsights() {
         ])
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly.
         // Must match the live sheet layout exactly (cols A–Y, 0-indexed).
-        const CALLS_HEADER = ["Sr. No.","Emp. Code","Emp. Tags","Employee Name","Employee Number","To Name","Country Code","To Number","Call Type","Call Method","Call Mode","Duration","Call Date","Call Time","Notes","UniqueId","Audio Url","Call Transcript","Stage","Application Form Completed %","Payment Initiated","Application Form Initiated","Source","Lead/App Start Stage","Call Duration in Mins"]
+        const CALLS_HEADER = ["Sr. No.", "Emp. Code", "Emp. Tags", "Employee Name", "Employee Number", "To Name", "Country Code", "To Number", "Call Type", "Call Method", "Call Mode", "Duration", "Call Date", "Call Time", "Notes", "UniqueId", "Audio Url", "Call Transcript", "Stage", "Application Form Completed %", "Payment Initiated", "Application Form Initiated", "Source", "Lead/App Start Stage", "Call Duration in Mins"]
         const callsRaw = [CALLS_HEADER, ...callsDataRaw]
         const appRaw = await fetchCached('App Start Dump', 'A:EW').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
@@ -3773,7 +3807,7 @@ export default function AdminInsights() {
         let previous = null
         try { previous = JSON.parse(localStorage.getItem(snapshotKey) || "null") } catch { previous = null }
         const changes = comparePipelineSnapshots(previous?.rows, activePipeline)
-        try { localStorage.setItem(snapshotKey, JSON.stringify({ savedAt: new Date().toISOString(), rows: snapshotPipeline(activePipeline) })) } catch {}
+        try { localStorage.setItem(snapshotKey, JSON.stringify({ savedAt: new Date().toISOString(), rows: snapshotPipeline(activePipeline) })) } catch { }
 
         if (!cancelled) {
           setAllRows(rows)
@@ -3825,14 +3859,14 @@ export default function AdminInsights() {
       {noCallsBanner}
       {view === "overview"
         ? <Overview
-            date={date}
-            setDate={setDate}
-            allRows={allRows}
-            pipelineRows={pipelineRows}
-            pipelineChanges={pipelineChanges}
-            onDrill={() => setParams(p => { const n = new URLSearchParams(p); n.delete('ai_subtab'); n.set('ai_view', 'detail'); return n }, { replace: true })}
-            onOpenPipeline={() => setParams(p => { const n = new URLSearchParams(p); n.set('ai_subtab', 'pipeline'); n.set('ai_view', 'detail'); return n }, { replace: true })}
-          />
+          date={date}
+          setDate={setDate}
+          allRows={allRows}
+          pipelineRows={pipelineRows}
+          pipelineChanges={pipelineChanges}
+          onDrill={() => setParams(p => { const n = new URLSearchParams(p); n.delete('ai_subtab'); n.set('ai_view', 'detail'); return n }, { replace: true })}
+          onOpenPipeline={() => setParams(p => { const n = new URLSearchParams(p); n.set('ai_subtab', 'pipeline'); n.set('ai_view', 'detail'); return n }, { replace: true })}
+        />
         : <Detail date={date} setDate={setDate} allRows={allRows} pipelineRows={pipelineRows} pipelineChanges={pipelineChanges} initialSubTab={detailSubTab} onBack={() => setView("overview")} appRows={appStartRaw} />
       }
     </>
