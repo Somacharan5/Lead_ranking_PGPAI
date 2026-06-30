@@ -10,7 +10,7 @@
  *   call_notes_insights:{counsellor}:{date}
  */
 
-import { supabase } from './supabase.js'
+import { sql } from './db.js'
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin',  '*')
@@ -24,11 +24,9 @@ export default async function handler(req, res) {
       const { key } = req.query
       if (!key) return res.status(400).json({ error: 'key is required' })
 
-      const { data } = await supabase
-        .from('ai_cache')
-        .select('result, created_at')
-        .eq('cache_key', key)
-        .single()
+      const rows = await sql`
+        SELECT result, created_at FROM ai_cache WHERE cache_key = ${key} LIMIT 1`
+      const data = rows[0]
 
       if (!data) return res.json({ hit: false, result: null })
       return res.json({ hit: true, result: data.result, cachedAt: data.created_at })
@@ -39,11 +37,12 @@ export default async function handler(req, res) {
       const { key, result } = req.body || {}
       if (!key || !result) return res.status(400).json({ error: 'key and result are required' })
 
-      await supabase.from('ai_cache').upsert({
-        cache_key:  key,
-        result:     result,
-        created_at: new Date().toISOString(),
-      }, { onConflict: 'cache_key' })
+      await sql`
+        INSERT INTO ai_cache (cache_key, result, created_at)
+        VALUES (${key}, ${JSON.stringify(result)}::jsonb, ${new Date().toISOString()})
+        ON CONFLICT (cache_key) DO UPDATE SET
+          result     = EXCLUDED.result,
+          created_at = EXCLUDED.created_at`
 
       return res.json({ ok: true })
     }

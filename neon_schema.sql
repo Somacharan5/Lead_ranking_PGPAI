@@ -1,6 +1,7 @@
 -- ============================================================
--- AIAS Dashboard — Supabase Schema
--- Run this entire file in the Supabase SQL Editor once.
+-- AIAS Dashboard — Neon Postgres Schema
+-- Run this entire file once against your Neon database
+-- (Neon dashboard → SQL Editor, or: psql "$DATABASE_URL" -f neon_schema.sql)
 -- ============================================================
 
 -- 1. Sheet cache (20-min TTL for live sheets, forever for past dates)
@@ -161,3 +162,13 @@ CREATE INDEX IF NOT EXISTS idx_app_history_payment        ON app_start_history (
 CREATE INDEX IF NOT EXISTS idx_lead_static_email          ON lead_static (email);
 -- app_start_static: look up by email (for joins)
 CREATE INDEX IF NOT EXISTS idx_app_static_email           ON app_start_static (email);
+
+-- 7. Paid-app classification (admin marks each completed paid app as Counseled or Inbound)
+--    Pending = no row → excluded from the leaderboard. Counseled → credited to the
+--    assigned counsellor. Inbound → never counted on the leaderboard.
+CREATE TABLE IF NOT EXISTS paidapp_classification (
+  application_number  TEXT PRIMARY KEY,
+  classification      TEXT        NOT NULL CHECK (classification IN ('counseled', 'inbound')),
+  classified_by       TEXT,
+  classified_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

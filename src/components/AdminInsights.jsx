@@ -1969,6 +1969,7 @@ function parsePaidAppRow(row) {
   const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
   const gradYear = parseInt(row[88]) || null
   return {
+    applicationNumber: cellText(row[1]),  // B = Application Number (classification key)
     name: cellText(row[12]),
     email: cellText(row[13]),
     mobile: cellText(row[14]),
@@ -2537,6 +2538,338 @@ function Overview({ date, setDate, allRows, pipelineRows, pipelineChanges, onDri
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// LEADERBOARD
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Week = Monday → Sunday. Returns the Monday 00:00 of the week containing `d`.
+function lbMonday(d) {
+  const x = new Date(d); x.setHours(0, 0, 0, 0)
+  const day = (x.getDay() + 6) % 7  // Mon=0 … Sun=6
+  x.setDate(x.getDate() - day)
+  return x
+}
+function lbYmd(d) {  // local 'YYYY-MM-DD' (avoid UTC shift from toISOString)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+}
+function lbWeekKey(d) { return lbYmd(lbMonday(d)) }  // the Monday of d's week
+function lbWeekLabel(mondayKey) {
+  if (!mondayKey) return "—"
+  const s = new Date(mondayKey + "T00:00:00")
+  const e = new Date(s); e.setDate(e.getDate() + 6)
+  const f = dt => dt.toLocaleDateString("en-IN", { day: "2-digit", month: "short" })
+  return `${f(s)} – ${f(e)}, ${e.getFullYear()}`
+}
+function lbTopKey(counts) {
+  let best = null, bestN = 0
+  for (const [k, n] of Object.entries(counts)) if (n > bestN) { best = k; bestN = n }
+  return best || "—"
+}
+
+function lbEmailHtml(rows, periodLabel) {
+  const isOverall = periodLabel === "Overall"
+  const body = rows.map((r, i) => `
+    <tr>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;">${i + 1}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;font-weight:600;">${r.counsellor}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">${r.paidApps}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;text-align:center;">${r.mins}</td>
+      <td style="padding:8px 12px;border-bottom:1px solid #eee;">${r.topCity}</td>
+    </tr>`).join("")
+  return `<div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#222;">
+    <h2 style="margin:0 0 4px;">🏆 Counsellor Leaderboard</h2>
+    <p style="color:#666;margin:0 0 16px;">${periodLabel}</p>
+    <p style="margin:0 0 16px;">Hi team, this is the ${isOverall ? "" : "weekly "}leaderboard.</p>
+    <table style="border-collapse:collapse;width:100%;font-size:14px;">
+      <thead><tr style="background:#111;color:#fff;text-align:left;">
+        <th style="padding:8px 12px;">#</th>
+        <th style="padding:8px 12px;">Counsellor</th>
+        <th style="padding:8px 12px;text-align:center;">Paid Apps</th>
+        <th style="padding:8px 12px;text-align:center;">Talk (min)</th>
+        <th style="padding:8px 12px;">Top City</th>
+      </tr></thead>
+      <tbody>${body || `<tr><td colspan="5" style="padding:16px;text-align:center;color:#999;">No data for this period</td></tr>`}</tbody>
+    </table>
+    <p style="color:#999;font-size:12px;margin-top:16px;">Sent from AIAS Admin · Counseled paid apps only · Inbound excluded.</p>
+  </div>`
+}
+
+function LeaderboardPanel({ appRows }) {
+  const [tab, setTab] = useState("overall")          // 'overall' | 'weekly'
+  const [selectedWeek, setSelectedWeek] = useState("")
+  const [classMap, setClassMap] = useState(null)     // { [appNum]: 'counseled'|'inbound' }
+  const [calls, setCalls] = useState(null)           // [{ emp, date(Date), mins }]
+  const [loading, setLoading] = useState(true)
+  const [err, setErr] = useState("")
+  const [savingKey, setSavingKey] = useState(null)
+  const [reviewFilter, setReviewFilter] = useState("pending")  // pending | counseled | inbound
+  const [email, setEmail] = useState({ sending: false, msg: "" })
+
+  // Completed paid apps, keyed for classification, tagged with their Mon–Sun week.
+  const paidApps = useMemo(() =>
+    (appRows || []).slice(1)
+      .map(r => { try { return parsePaidAppRow(r) } catch { return null } })
+      .filter(Boolean)
+      .filter(a => a.applicationNumber)
+      .map(a => ({ ...a, week: a.paidOn ? lbWeekKey(a.paidOn) : null }))
+  , [appRows])
+
+  // Load classification map + full (cumulative) call history once.
+  useEffect(() => {
+    let cancelled = false
+    async function load() {
+      setLoading(true); setErr("")
+      try {
+        const params = new URLSearchParams({ action: "fetch", sheet: "Call History updated Daily", range: "A2:Y" })
+        const [cls, callsRes] = await Promise.all([
+          fetch("/api/paidapp-classify").then(r => r.ok ? r.json() : { map: {} }).catch(() => ({ map: {} })),
+          fetch(`/api/sheets?${params}`).then(r => { if (!r.ok) throw new Error(`Call History fetch failed (${r.status})`); return r.json() }),
+        ])
+        if (cancelled) return
+        const parsed = (callsRes.rows || []).slice(1).map(row => {
+          const emp = normalizeName(row[3])
+          const dt = parseDate(row[12])
+          const mins = parseDurationMins(row[24] ?? row[11])
+          return emp && dt ? { emp, date: dt, mins: mins || 0 } : null
+        }).filter(Boolean)
+        setClassMap(cls.map || {})
+        setCalls(parsed)
+      } catch (e) {
+        if (!cancelled) setErr(e.message)
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [])
+
+  // Past weeks present in the data (newest first), default to the most recent.
+  const weeks = useMemo(() => {
+    const set = new Set()
+    paidApps.forEach(a => a.week && set.add(a.week))
+    ;(calls || []).forEach(c => set.add(lbWeekKey(c.date)))
+    return [...set].sort().reverse()
+  }, [paidApps, calls])
+
+  useEffect(() => { if (!selectedWeek && weeks.length) setSelectedWeek(weeks[0]) }, [weeks, selectedWeek])
+
+  // Leaderboard rows for the active period.
+  const board = useMemo(() => {
+    if (!classMap || !calls) return []
+    const inWeek = tab === "weekly" ? selectedWeek : null
+    const byC = {}
+    const ensure = name => (byC[name] ||= { counsellor: name, paidApps: 0, mins: 0, cityCounts: {} })
+
+    paidApps
+      .filter(a => classMap[a.applicationNumber] === "counseled")
+      .filter(a => !inWeek || a.week === inWeek)
+      .forEach(a => {
+        if (!a.counsellor || a.counsellor === "Unknown") return
+        const e = ensure(a.counsellor)
+        e.paidApps++
+        if (a.city && a.city !== "Unknown") e.cityCounts[a.city] = (e.cityCounts[a.city] || 0) + 1
+      })
+
+    calls
+      .filter(c => !inWeek || lbWeekKey(c.date) === inWeek)
+      .forEach(c => { if (c.emp && c.emp !== "Others") ensure(c.emp).mins += c.mins })
+
+    return Object.values(byC)
+      .map(e => ({ counsellor: e.counsellor, paidApps: e.paidApps, mins: Math.round(e.mins), topCity: lbTopKey(e.cityCounts) }))
+      .sort((a, b) => b.paidApps - a.paidApps || b.mins - a.mins || a.counsellor.localeCompare(b.counsellor))
+  }, [classMap, calls, paidApps, tab, selectedWeek])
+
+  const pendingCount = useMemo(() => classMap ? paidApps.filter(a => !classMap[a.applicationNumber]).length : 0, [classMap, paidApps])
+
+  const reviewList = useMemo(() => {
+    if (!classMap) return []
+    return paidApps
+      .filter(a => (classMap[a.applicationNumber] || "pending") === reviewFilter)
+      .sort((a, b) => (b.paidOn?.getTime() || 0) - (a.paidOn?.getTime() || 0))
+      .slice(0, 200)
+  }, [classMap, paidApps, reviewFilter])
+
+  async function classify(appNum, classification) {
+    setSavingKey(appNum)
+    try {
+      const r = await fetch("/api/paidapp-classify", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ application_number: appNum, classification, classified_by: "admin" }),
+      })
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || "save failed")
+      setClassMap(prev => {
+        const next = { ...prev }
+        if (classification === "pending") delete next[appNum]
+        else next[appNum] = classification
+        return next
+      })
+    } catch (e) {
+      alert("Could not save: " + e.message)
+    } finally {
+      setSavingKey(null)
+    }
+  }
+
+  async function sendEmail() {
+    setEmail({ sending: true, msg: "" })
+    try {
+      const periodLabel = tab === "weekly" ? lbWeekLabel(selectedWeek) : "Overall"
+      const html = lbEmailHtml(board, periodLabel)
+      const subject = tab === "weekly" ? `🏆 Weekly Leaderboard — ${periodLabel}` : "🏆 Leaderboard — Overall"
+      const r = await fetch("/api/leaderboard-email", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ subject, html, week: selectedWeek }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) throw new Error(d.error || "send failed")
+      setEmail({ sending: false, msg: `✓ Sent to ${d.recipients?.length ?? ""} recipient(s)` })
+    } catch (e) {
+      setEmail({ sending: false, msg: "⚠ " + e.message })
+    }
+    setTimeout(() => setEmail(s => ({ ...s, msg: "" })), 6000)
+  }
+
+  if (loading) return (
+    <div className="py-20 flex flex-col items-center gap-3 text-gray-400">
+      <div className="w-8 h-8 border-2 border-gray-300 border-t-gray-600 rounded-full animate-spin" />
+      <span className="text-sm">Loading leaderboard…</span>
+    </div>
+  )
+  if (err) return <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-sm text-red-700">{err}</div>
+
+  const pill = "px-3 py-1.5 rounded-lg text-xs font-medium transition"
+  const medal = i => i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `#${i + 1}`
+
+  return (
+    <div className="space-y-5">
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+          <button onClick={() => setTab("overall")} className={`${pill} ${tab === "overall" ? "bg-white shadow text-gray-900" : "text-gray-500"}`}>Overall</button>
+          <button onClick={() => setTab("weekly")} className={`${pill} ${tab === "weekly" ? "bg-white shadow text-gray-900" : "text-gray-500"}`}>Weekly</button>
+        </div>
+        {tab === "weekly" && (
+          <select value={selectedWeek} onChange={e => setSelectedWeek(e.target.value)}
+            className="border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500">
+            {weeks.length === 0 && <option value="">No weeks</option>}
+            {weeks.map(w => <option key={w} value={w}>{lbWeekLabel(w)}</option>)}
+          </select>
+        )}
+        <div className="ml-auto flex items-center gap-2">
+          {email.msg && <span className="text-xs text-gray-600">{email.msg}</span>}
+          <button onClick={sendEmail} disabled={email.sending || board.length === 0}
+            className="px-3 py-1.5 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition disabled:opacity-50">
+            {email.sending ? "Sending…" : "📧 Email leaderboard"}
+          </button>
+        </div>
+      </div>
+
+      {/* Leaderboard table */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
+          <div className="text-sm font-semibold text-gray-800">
+            🏆 {tab === "weekly" ? lbWeekLabel(selectedWeek) : "Overall"}
+          </div>
+          <span className="text-xs text-gray-400">Counseled paid apps only · inbound excluded</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Rank</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Counsellor</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Paid Apps</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 uppercase tracking-wide">Talk Time (min)</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide">Top City</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {board.length === 0 && (
+                <tr><td colSpan={5} className="px-4 py-10 text-center text-gray-400 text-sm">No counseled paid apps in this period yet. Approve some below.</td></tr>
+              )}
+              {board.map((r, i) => (
+                <tr key={r.counsellor} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 text-lg">{medal(i)}</td>
+                  <td className="px-4 py-3 font-semibold text-gray-800">{r.counsellor}</td>
+                  <td className="px-4 py-3 text-center font-bold text-blue-700">{r.paidApps}</td>
+                  <td className="px-4 py-3 text-center text-gray-700 tabular-nums">{r.mins}</td>
+                  <td className="px-4 py-3 text-gray-600">{r.topCity}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Classification review */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold text-gray-800">
+            Classify paid apps
+            {pendingCount > 0 && <span className="ml-2 text-xs font-bold bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full">{pendingCount} pending</span>}
+          </div>
+          <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+            {[["pending", "Pending"], ["counseled", "Counseled"], ["inbound", "Inbound"]].map(([k, l]) => (
+              <button key={k} onClick={() => setReviewFilter(k)}
+                className={`${pill} ${reviewFilter === k ? "bg-white shadow text-gray-900" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-gray-50 border-b border-gray-200">
+              <tr>
+                {["Name", "Counsellor", "City", "Paid On", "Source", "Action"].map(h => (
+                  <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {reviewList.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400 text-sm">Nothing here.</td></tr>
+              )}
+              {reviewList.map(a => {
+                const current = classMap[a.applicationNumber] || "pending"
+                const busy = savingKey === a.applicationNumber
+                return (
+                  <tr key={a.applicationNumber} className="hover:bg-gray-50">
+                    <td className="px-4 py-3 font-medium text-gray-800 text-xs">{a.name || "—"}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{a.counsellor}</td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{a.city}</td>
+                    <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">
+                      {a.paidOn ? a.paidOn.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }) : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-gray-600">{a.source}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-1.5">
+                        <button onClick={() => classify(a.applicationNumber, "counseled")} disabled={busy}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 ${current === "counseled" ? "bg-emerald-600 text-white" : "bg-emerald-50 text-emerald-700 hover:bg-emerald-100"}`}>
+                          Counseled
+                        </button>
+                        <button onClick={() => classify(a.applicationNumber, "inbound")} disabled={busy}
+                          className={`px-2.5 py-1 rounded-lg text-xs font-medium transition disabled:opacity-40 ${current === "inbound" ? "bg-gray-700 text-white" : "bg-gray-100 text-gray-600 hover:bg-gray-200"}`}>
+                          Inbound
+                        </button>
+                        {current !== "pending" && (
+                          <button onClick={() => classify(a.applicationNumber, "pending")} disabled={busy}
+                            className="px-2 py-1 rounded-lg text-xs text-gray-400 hover:text-gray-700 transition disabled:opacity-40" title="Reset to pending">
+                            ↺
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // DETAIL VIEW
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2637,7 +2970,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts", "📊 Charts"], ["table", "📋 Pivot Table"], ["pipeline", "🎯 Pipeline"], ["ai", "✦ AI Insights"], ["paid-apps", "💰 Paid Apps"], ["transcripts", "🎙️ Transcripts"]].map(([k, l]) => (
+        {[["charts", "📊 Charts"], ["table", "📋 Pivot Table"], ["pipeline", "🎯 Pipeline"], ["ai", "✦ AI Insights"], ["paid-apps", "💰 Paid Apps"], ["transcripts", "🎙️ Transcripts"], ["leaderboard", "🏆 Leaderboard"]].map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${subTab === k
                 ? "bg-gray-900 text-white"
@@ -2682,6 +3015,9 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         )}
         {subTab === "transcripts" && (
           <TranscriptionsPanel date={date} mainTab={mainTab} pipelineRows={pipelineRows} />
+        )}
+        {subTab === "leaderboard" && (
+          <LeaderboardPanel appRows={appRows} />
         )}
       </div>
 

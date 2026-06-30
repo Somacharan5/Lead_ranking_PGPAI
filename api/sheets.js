@@ -12,7 +12,7 @@
  *   sheet_name:date    → e.g. "Calls History:2026-06-08"  (past dates cache forever)
  */
 
-import { supabase, SHEET_CACHE_TTL_MINUTES } from './supabase.js'
+import { sql, SHEET_CACHE_TTL_MINUTES } from './db.js'
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 const API_KEY     = process.env.VITE_GOOGLE_API_KEY
@@ -50,13 +50,13 @@ export default async function handler(req, res) {
   try {
     // ── INVALIDATE ────────────────────────────────────────────────────────────
     if (req.method === 'POST' && action === 'invalidate_all') {
-      await supabase.from('sheet_cache').delete().neq('sheet_name', '__never__')
+      await sql`DELETE FROM sheet_cache`
       return res.json({ ok: true, message: 'All sheet caches cleared' })
     }
 
     if (req.method === 'POST' && action === 'invalidate') {
       const key = date ? `${sheet}:${date}` : sheet
-      await supabase.from('sheet_cache').delete().eq('sheet_name', key)
+      await sql`DELETE FROM sheet_cache WHERE sheet_name = ${key}`
       return res.json({ ok: true, message: `Cache cleared for: ${key}` })
     }
 
@@ -72,11 +72,9 @@ export default async function handler(req, res) {
     const foreverKey  = isPastDate(date)  // past dates: never expire
 
     // 1. Check cache
-    const { data: cached } = await supabase
-      .from('sheet_cache')
-      .select('data, fetched_at, row_count')
-      .eq('sheet_name', cacheKey)
-      .single()
+    const cachedRows = await sql`
+      SELECT data, fetched_at, row_count FROM sheet_cache WHERE sheet_name = ${cacheKey} LIMIT 1`
+    const cached = cachedRows[0]
 
     if (cached) {
       const stale = !foreverKey && isCacheStale(cached.fetched_at)
@@ -90,12 +88,13 @@ export default async function handler(req, res) {
     const rows = await fetchFromSheets(targetSheetId, sheet, range)
 
     // 3. Upsert into cache
-    await supabase.from('sheet_cache').upsert({
-      sheet_name: cacheKey,
-      data:       rows,
-      fetched_at: new Date().toISOString(),
-      row_count:  rows.length,
-    }, { onConflict: 'sheet_name' })
+    await sql`
+      INSERT INTO sheet_cache (sheet_name, data, fetched_at, row_count)
+      VALUES (${cacheKey}, ${JSON.stringify(rows)}::jsonb, ${new Date().toISOString()}, ${rows.length})
+      ON CONFLICT (sheet_name) DO UPDATE SET
+        data       = EXCLUDED.data,
+        fetched_at = EXCLUDED.fetched_at,
+        row_count  = EXCLUDED.row_count`
 
     return res.json({ rows, rowCount: rows.length, fromCache: false })
 

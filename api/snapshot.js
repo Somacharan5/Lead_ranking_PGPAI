@@ -7,7 +7,7 @@
  * 3. Inserts dynamic columns into lead_history / app_start_history for today's date
  */
 
-import { supabase } from './supabase.js'
+import { upsertRows } from './db.js'
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 const API_KEY     = process.env.VITE_GOOGLE_API_KEY
@@ -195,19 +195,6 @@ function buildAppDynamic(row, snapshotDate) {
   }
 }
 
-// ── Batch upsert helper (Supabase has 1000-row limit per call) ───────────────
-async function batchUpsert(table, rows, conflict) {
-  const BATCH = 500
-  let inserted = 0
-  for (let i = 0; i < rows.length; i += BATCH) {
-    const chunk = rows.slice(i, i + BATCH)
-    const { error } = await supabase.from(table).upsert(chunk, { onConflict: conflict, ignoreDuplicates: false })
-    if (error) throw new Error(`${table} upsert error: ${error.message}`)
-    inserted += chunk.length
-  }
-  return inserted
-}
-
 // ── Main handler ─────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -237,14 +224,11 @@ export default async function handler(req, res) {
     const leadDynamic = [...new Map(leadRows.map(r => buildLeadDynamic(r, istDate)).filter(Boolean).map(r => [r.email, r])).values()]
 
     // Upsert static (ignore duplicates — already captured)
-    const { error: lsErr } = await supabase
-      .from('lead_static')
-      .upsert(leadStatic, { onConflict: 'email', ignoreDuplicates: true })
-    if (lsErr) throw new Error(`lead_static: ${lsErr.message}`)
+    await upsertRows('lead_static', leadStatic, 'email', { ignoreDuplicates: true })
     log.push(`lead_static: upserted ${leadStatic.length}`)
 
     // Upsert dynamic (full upsert — updates existing same-day row if re-run)
-    const ldCount = await batchUpsert('lead_history', leadDynamic, 'snapshot_date,email')
+    const ldCount = await upsertRows('lead_history', leadDynamic, 'snapshot_date,email')
     log.push(`lead_history: upserted ${ldCount}`)
 
     // ── 2. Fetch App Start Dump ───────────────────────────────────────────────
@@ -256,13 +240,10 @@ export default async function handler(req, res) {
     const appStatic  = [...new Map(appRows.map(buildAppStatic).filter(Boolean).map(r => [r.application_number, r])).values()]
     const appDynamic = [...new Map(appRows.map(r => buildAppDynamic(r, istDate)).filter(Boolean).map(r => [r.application_number, r])).values()]
 
-    const { error: asErr } = await supabase
-      .from('app_start_static')
-      .upsert(appStatic, { onConflict: 'application_number', ignoreDuplicates: true })
-    if (asErr) throw new Error(`app_start_static: ${asErr.message}`)
+    await upsertRows('app_start_static', appStatic, 'application_number', { ignoreDuplicates: true })
     log.push(`app_start_static: upserted ${appStatic.length}`)
 
-    const adCount = await batchUpsert('app_start_history', appDynamic, 'snapshot_date,application_number')
+    const adCount = await upsertRows('app_start_history', appDynamic, 'snapshot_date,application_number')
     log.push(`app_start_history: upserted ${adCount}`)
 
     const durationMs = Date.now() - start
