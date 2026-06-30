@@ -9,3 +9,6 @@ dist
 
 # Service account key (local dev only — provide via GOOGLE_SERVICE_ACCOUNT_JSON in prod)
 api/sa.json
+
+# Local email preview (generated)
+leaderboard-email-preview.html
