@@ -35,7 +35,9 @@ import { fetchSheetData, getCol } from './sheetsApi'
 // ============================================================================
 
 const LEAD_COUNSELED_SUBSTAGES  = new Set(['hot', 'warm', 'cold'])
-const LEAD_NCE_SUBSTAGES        = new Set(['call later', 'disconnected', 'dnp', 'dnp2', 'not reachable'])
+// NOTE: 'dnp2' is intentionally excluded from Followup Leads for now — counsellors
+// should not work DNP2 followups yet. To re-enable, add 'dnp2' back to this set.
+const LEAD_NCE_SUBSTAGES        = new Set(['call later', 'disconnected', 'dnp', 'not reachable'])
 const APP_COUNSELED_SUBSTAGES   = new Set(['hot', 'warm', 'cold'])
 const APP_NCE_SUBSTAGES         = new Set(['call later', 'dnp', 'dnp2'])
 
@@ -270,7 +272,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 //
 //   NCE path:
 //     BD = "No Contact Established"
-//     AND BE ∈ [Call later, Disconnected, DNP, DNP2, Not Reachable]
+//     AND BE ∈ [Call later, Disconnected, DNP, Not Reachable]   (DNP2 temporarily excluded)
 //     AND (BK empty OR BK ≤ yesterday)
 //
 // Score → CH   Priority → CI   (Priority 5 excluded)
