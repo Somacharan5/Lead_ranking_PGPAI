@@ -289,11 +289,11 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
   }
 
   // Bug 2 fix: Lead Dump — only include user type "lead" (AG=32), exclude "applicant" rows
-  // BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, CI(86)=Priority
+  // BC(54)=Counsellor, BD(55)=Stage, BE(56)=SubStage, BP(67)=Notes, CK(88)=Priority (moved CI→CK, +2)
   // BA(52)=Registered On, BK(62)=Last Activity
   const LEAD_CFG = {
     type: "Lead", nameIdx: 0, emailIdx: 1, mobileIdx: 2, sourceIdx: 6,
-    counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 86, paymentStatusIdx: 35,
+    counsellorIdx: 54, stageIdx: 55, subStageIdx: 56, notesIdx: 67, priorityIdx: 88, paymentStatusIdx: 35,
     registeredOnIdx: 52, lastActivityIdx: 62,
   }
   leadDumpRows.slice(1).forEach(row => {
@@ -313,9 +313,9 @@ function buildPipelineRows(leadDumpRows = [], followupLeadRows = [], appStartRow
     counsellorIdx: 43, stageIdx: 46, leadStageIdx: 45, subStageIdx: 47, notesIdx: 64, paymentStatusIdx: 2,
     registeredOnIdx: 16, lastActivityIdx: 58, stateIdx: 76, cityIdx: 77,
   }
-  // EW(152) = "Priority App Start"
+  // EY(154) = "Priority App Start" (moved EW→EY, +2)
   appStartRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: null }))
-  appFollowupRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: 152 }))
+  appFollowupRows.slice(1).forEach(row => add(row, { ...APP_CFG_BASE, priorityIdx: 154 }))
 
   // Bug 1 fix: cross-type dedup — if same phone/email appears as both Lead and App Start,
   // keep App Start only (it's further in the funnel; Lead entry double-counts the person)
@@ -1961,9 +1961,9 @@ function parsePaidAppRow(row) {
   // Column indices (0-based) per current App Start Dump layout:
   // C(2)=Payment Status, Q(16)=Registered On, BH(59)=Application Fee Paid On,
   // M(12)=Name, N(13)=Email, O(14)=Mobile, S(18)=Source, T(19)=Medium, U(20)=Campaign,
-  // AR(43)=Counsellor, BY(76)=State, BZ(77)=City, CK(88)=Graduation year,
-  // DC(106)=Undergrad university, DF(109)=Undergrad degree,
-  // DY(128)=Current/most recent organization, EE(134)=Designation
+  // AR(43)=Counsellor, BY(76)=State, BZ(77)=City, CK(88)=Graduation year (before insert, unchanged),
+  // DE(108)=Undergrad university, DH(111)=Undergrad degree,
+  // EA(130)=Current/most recent organization, EG(136)=Designation  (all +2 from the 2 new profile cols)
   const registeredOn = paidSerialToDate(row[16])
   const paidOn = paidSerialToDate(row[59]) || registeredOn || null
   const daysToConvert = (registeredOn && paidOn) ? Math.round((paidOn - registeredOn) / 86400000) : null
@@ -1985,10 +1985,10 @@ function parsePaidAppRow(row) {
     city: cellText(row[77]) || "Unknown",
     gradYear: gradYear ? String(gradYear) : "Unknown",
     workStatus: paidGetWorkStatus(gradYear),
-    college: cellText(row[106]) || "Unknown",
-    degree: cellText(row[109]) || "Unknown",
-    company: cellText(row[128]) || "Unknown",
-    role: cellText(row[134]) || "Unknown",
+    college: cellText(row[108]) || "Unknown",
+    degree: cellText(row[111]) || "Unknown",
+    company: cellText(row[130]) || "Unknown",
+    role: cellText(row[136]) || "Unknown",
   }
 }
 
@@ -4190,13 +4190,13 @@ export default function AdminInsights() {
 
         const [callsDataRaw, leadRaw] = await Promise.all([
           fetchCached('Call History updated Daily', 'A2:Y'),
-          fetchCached('Lead Dump', 'A:CI'),
+          fetchCached('Lead Dump', 'A:CK'),
         ])
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly.
         // Must match the live sheet layout exactly (cols A–Y, 0-indexed).
         const CALLS_HEADER = ["Sr. No.", "Emp. Code", "Emp. Tags", "Employee Name", "Employee Number", "To Name", "Country Code", "To Number", "Call Type", "Call Method", "Call Mode", "Duration", "Call Date", "Call Time", "Notes", "UniqueId", "Audio Url", "Call Transcript", "Stage", "Application Form Completed %", "Payment Initiated", "Application Form Initiated", "Source", "Lead/App Start Stage", "Call Duration in Mins"]
         const callsRaw = [CALLS_HEADER, ...callsDataRaw]
-        const appRaw = await fetchCached('App Start Dump', 'A:EW').catch(e => {
+        const appRaw = await fetchCached('App Start Dump', 'A:EY').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })

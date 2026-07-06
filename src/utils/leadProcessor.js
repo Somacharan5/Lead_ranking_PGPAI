@@ -12,8 +12,9 @@ import { fetchSheetData, getCol } from './sheetsApi'
 //   H   Primary Medium                BE  Lead Sub Stage
 //   I   Primary Campaign              BK  Counsellor Last Activity Date
 //                                     BP  Notes
-//                                     CH  Total Lead Score   (moved from CF)
-//                                     CI  Priority           (moved from CG)
+//                                     CJ  Total Lead Score   (moved CH→CJ: 2 new cols
+//                                     CK  Priority             "…professional qualification?"
+//                                                              inserted at CC/CD, pushing scores +2)
 //
 // APP START DUMP (new + followup app starts in one sheet):
 //   A   Application Number (string)   AT  Lead Stage
@@ -21,8 +22,8 @@ import { fetchSheetData, getCol } from './sheetsApi'
 //   M   Name                          AV  Application Sub Stage
 //   N   Email                         BG  Counsellor Last Activity Date
 //   O   Mobile                        BM  Notes
-//   Q   Registered On                 EV  Total Score        (moved from ET; header "Lead Score")
-//   S   Source                        EW  Followup Priority  (moved from EU; header "Priority App Start")
+//   Q   Registered On                 EX  Total Score        (moved EV→EX; header "Lead Score")
+//   S   Source                        EY  Followup Priority  (moved EW→EY; header "Priority App Start")
 //   T   Medium
 //   U   Campaign
 //   W   Primary Medium
@@ -250,7 +251,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     stage:                  getCol(row, 'BD'),
     subStage:               getCol(row, 'BE'),
     notes:                  getCol(row, 'BP'),
-    score:                  parseFloat(getCol(row, 'CH')) || 0,
+    score:                  parseFloat(getCol(row, 'CJ')) || 0,
     counsellor:             getCol(row, 'BC'),
     priority:               '',
     category:               'Fresh Lead',
@@ -275,7 +276,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
 //     AND BE ∈ [Call later, Disconnected, DNP, Not Reachable]   (DNP2 temporarily excluded)
 //     AND (BK empty OR BK ≤ yesterday)
 //
-// Score → CH   Priority → CI   (Priority 5 excluded)
+// Score → CJ   Priority → CK   (Priority 5 excluded)
 // ============================================================================
 export function getFollowupLeads(leadDumpRows, counsellorName) {
   const normName = counsellorName.toLowerCase()
@@ -327,9 +328,9 @@ export function getFollowupLeads(leadDumpRows, counsellorName) {
       stage:                  getCol(row, 'BD'),
       subStage:               getCol(row, 'BE'),
       notes:                  getCol(row, 'BP'),
-      score:                  parseFloat(getCol(row, 'CH')) || 0,
+      score:                  parseFloat(getCol(row, 'CJ')) || 0,
       counsellor:             getCol(row, 'BC'),
-      priority:               getCol(row, 'CI'),
+      priority:               getCol(row, 'CK'),
       category:               'Followup Lead',
     }))
     .filter(lead => (lead.priority || '').toLowerCase() !== 'priority 5')
@@ -396,7 +397,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
     stage:                  getCol(row, 'AU'),
     subStage:               getCol(row, 'AV'),
     notes:                  getCol(row, 'BM'),
-    score:                  parseFloat(getCol(row, 'EV')) || 0,
+    score:                  parseFloat(getCol(row, 'EX')) || 0,
     counsellor:             getCol(row, 'AR'),
     priority:               '',
     category:               'New App Start',
@@ -426,7 +427,7 @@ export function getNewAppStart(appStartDumpRows, counsellorName) {
 // Lead Stage path:
 //   AT = "Counseled" AND BG ≥ 3 days ago
 //
-// Priority 5 (EW) excluded.
+// Priority 5 (EY) excluded.
 // ============================================================================
 export function getAppFollowup(appStartDumpRows, counsellorName) {
   const normName = counsellorName.toLowerCase()
@@ -484,9 +485,9 @@ export function getAppFollowup(appStartDumpRows, counsellorName) {
       stage:                  getCol(row, 'AU'),
       subStage:               getCol(row, 'AV'),
       notes:                  getCol(row, 'BM'),
-      score:                  parseFloat(getCol(row, 'EV')) || 0,
+      score:                  parseFloat(getCol(row, 'EX')) || 0,
       counsellor:             getCol(row, 'AR'),
-      priority:               getCol(row, 'EW'),
+      priority:               getCol(row, 'EY'),
       category:               'App Followup',
     }))
     .filter(lead => (lead.priority || '').toLowerCase() !== 'priority 5')
@@ -538,9 +539,9 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
         stage:                  appStage === 'counseled' ? getCol(row, 'AU') : getCol(row, 'AT'),
         subStage:               getCol(row, 'AV'),
         notes:                  getCol(row, 'BM'),
-        score:                  parseFloat(getCol(row, 'EV')) || 0,
+        score:                  parseFloat(getCol(row, 'EX')) || 0,
         counsellor:             getCol(row, 'AR'),
-        priority:               getCol(row, 'EW'),
+        priority:               getCol(row, 'EY'),
         category:               'App Counselling',
         bucket:                 (getCol(row, 'AV') || '').toLowerCase().trim(),
       }
@@ -576,9 +577,9 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
       stage:                  getCol(row, 'BD'),
       subStage:               getCol(row, 'BE'),
       notes:                  getCol(row, 'BP'),
-      score:                  parseFloat(getCol(row, 'CH')) || 0,
+      score:                  parseFloat(getCol(row, 'CJ')) || 0,
       counsellor:             getCol(row, 'BC'),
-      priority:               getCol(row, 'CI'),
+      priority:               getCol(row, 'CK'),
       category:               'Lead Counselling',
       bucket:                 (getCol(row, 'BE') || '').toLowerCase().trim(),
     }))
@@ -673,8 +674,8 @@ async function fetchCached(sheet, range) {
 
 export async function getLeadsForCounsellor(counsellorName) {
   const [leadDump, appStartDump, blackoutsRaw] = await Promise.all([
-    fetchCached('Lead Dump',          'A:CI'),
-    fetchCached('App Start Dump',     'A:EW'),
+    fetchCached('Lead Dump',          'A:CK'),
+    fetchCached('App Start Dump',     'A:EY'),
     fetchCached('Campaign Blackouts', 'A:D').catch(() => []),
   ])
 

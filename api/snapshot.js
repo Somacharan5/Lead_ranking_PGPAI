@@ -28,7 +28,8 @@ async function fetchSheet(sheetName, range) {
 // Static: A=0 B=1 C=2 D=3 E=4 F=5 G=6 H=7 I=8 AC=28 Y=24 V=21 W=22 BF=57 BA=52
 // Dynamic: AF=31 AG=32 AH=33 AI=34 AJ=35 BB=53 BC=54 BD=55 BE=56
 //          BG=58 BH=59 BI=60 BJ=61 BK=62 BL=63 BM=64 BO=66 BP=67 BQ=68
-//          Scores: CC=80(Source) CD=81(Recency) CE=82(Stage) CF=83(Organic) CG=84(IG) CH=85(Total) CI=86(Priority)
+//          +2 shift: 2 new profile cols inserted at CC/CD, pushing the scores block right.
+//          Scores: CE=82(Source) CF=83(Recency) CG=84(Stage) CH=85(Organic) CI=86(IG) CJ=87(Total) CK=88(Priority)
 
 function buildLeadStatic(row) {
   const email = cell(row, 1).toLowerCase()
@@ -98,13 +99,13 @@ function buildLeadDynamic(row, snapshotDate) {
     app_last_activity_date:      cell(row, 66),  // BO
     notes:                       cell(row, 67),  // BP
     tags:                        cell(row, 68),  // BQ
-    source_score:                cell(row, 80),  // CC
-    recency_score:               cell(row, 81),  // CD
-    stage_score:                 cell(row, 82),  // CE
-    organic_bonus:               cell(row, 83),  // CF
-    ig_bonus:                    cell(row, 84),  // CG
-    total_lead_score:            cell(row, 85),  // CH
-    priority:                    cell(row, 86),  // CI
+    source_score:                cell(row, 82),  // CE
+    recency_score:               cell(row, 83),  // CF
+    stage_score:                 cell(row, 84),  // CG
+    organic_bonus:               cell(row, 85),  // CH
+    ig_bonus:                    cell(row, 86),  // CI
+    total_lead_score:            cell(row, 87),  // CJ
+    priority:                    cell(row, 88),  // CK
   }
 }
 
@@ -114,7 +115,8 @@ function buildLeadDynamic(row, snapshotDate) {
 //          AO=40 AR=43 AS=44 AT=45 AU=46 AV=47 AW=48 AX=49 AY=50 AZ=51
 //          BA=52 BB=53 BC=54 BD=55 BE=56 BF=57 BG=58 BH=59 BI=60 BK=62
 //          BL=63 BM=64 BN=65 BO=66 BP=67
-//          ES=148 ET=149 EU=150 EV=151(Total Score) EW=152(Priority App Start)
+//          +2 shift: same 2 new profile cols push the MU-BAAT/score tail right.
+//          EU=150 EV=151 EW=152 EX=153(Total Score) EY=154(Priority App Start)
 
 function buildAppStatic(row) {
   const appNum = cell(row, 0)
@@ -187,11 +189,11 @@ function buildAppDynamic(row, snapshotDate) {
     video_link:                  cell(row, 65),  // BN
     application_tags:            cell(row, 66),  // BO
     tags:                        cell(row, 67),  // BP
-    mu_baat_link:                cell(row, 148), // ES
-    mu_baat_result:              cell(row, 149), // ET
-    mu_baat_report:              cell(row, 150), // EU
-    total_score_formula:         cell(row, 151), // EV (header "Lead Score")
-    priority_app_start:          cell(row, 152), // EW (header "Priority App Start")
+    mu_baat_link:                cell(row, 150), // EU
+    mu_baat_result:              cell(row, 151), // EV
+    mu_baat_report:              cell(row, 152), // EW
+    total_score_formula:         cell(row, 153), // EX (header "Lead Score")
+    priority_app_start:          cell(row, 154), // EY (header "Priority App Start")
   }
 }
 
@@ -215,8 +217,8 @@ export default async function handler(req, res) {
     log.push(`Snapshot started for ${istDate}`)
 
     // ── 1. Fetch Lead Dump ────────────────────────────────────────────────────
-    log.push('Fetching Lead Dump A:CI…')
-    const leadRows = await fetchSheet('Lead Dump', 'A:CI')
+    log.push('Fetching Lead Dump A:CK…')
+    const leadRows = await fetchSheet('Lead Dump', 'A:CK')
     log.push(`Lead Dump: ${leadRows.length} rows`)
 
     // Build static + dynamic batches; deduplicate by email (keep last occurrence)
@@ -232,8 +234,8 @@ export default async function handler(req, res) {
     log.push(`lead_history: upserted ${ldCount}`)
 
     // ── 2. Fetch App Start Dump ───────────────────────────────────────────────
-    log.push('Fetching App Start Dump A:EW…')
-    const appRows = await fetchSheet('App Start Dump', 'A:EW')
+    log.push('Fetching App Start Dump A:EY…')
+    const appRows = await fetchSheet('App Start Dump', 'A:EY')
     log.push(`App Start Dump: ${appRows.length} rows`)
 
     // Deduplicate by application_number (keep last occurrence)

@@ -2,7 +2,7 @@
  * api/sheets.js — Cached Google Sheets proxy
  *
  * Actions:
- *   GET ?action=fetch&sheet=Lead+Dump&range=A:CG          → returns cached or fresh sheet data
+ *   GET ?action=fetch&sheet=Lead+Dump&range=A:CK          → returns cached or fresh sheet data
  *   GET ?action=fetch&sheet=Calls+History&range=A:V&date=2026-06-08  → date-keyed cache
  *   POST ?action=invalidate&sheet=Lead+Dump               → busts cache (force-refresh)
  *   POST ?action=invalidate_all                           → busts all sheet caches
