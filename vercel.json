@@ -2,6 +2,9 @@
   "rewrites": [
     { "source": "/(.*)", "destination": "/" }
   ],
+  "functions": {
+    "api/snapshot.js": { "maxDuration": 60 }
+  },
   "crons": [
     {
       "path": "/api/snapshot",

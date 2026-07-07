@@ -12,11 +12,12 @@ import { upsertRows } from './db.js'
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets'
 const API_KEY     = process.env.VITE_GOOGLE_API_KEY
 const SHEET_ID    = process.env.VITE_GOOGLE_SHEET_ID
+const CALLS_ID    = process.env.VITE_CALLS_HISTORY_SHEET_ID  // Callyzer calls live in a separate spreadsheet
 
 function cell(row, idx) { return String(row[idx] ?? '').trim() }
 
-async function fetchSheet(sheetName, range) {
-  const url = `${SHEETS_BASE}/${SHEET_ID}/values/${encodeURIComponent(sheetName)}!${range}`
+async function fetchSheet(sheetName, range, sheetId = SHEET_ID) {
+  const url = `${SHEETS_BASE}/${sheetId}/values/${encodeURIComponent(sheetName)}!${range}`
     + `?key=${API_KEY}&valueRenderOption=UNFORMATTED_VALUE&dateTimeRenderOption=SERIAL_NUMBER`
   const r = await fetch(url)
   if (!r.ok) throw new Error(`Sheets ${sheetName}: ${r.status}`)
@@ -197,6 +198,51 @@ function buildAppDynamic(row, snapshotDate) {
   }
 }
 
+// ── Call History (Callyzer) column indices (0-based, sheet A:Y) ───────────────
+// Sr.No=0 EmpCode=1 EmpTags=2 EmployeeName=3 EmployeeNumber=4 ToName=5 CountryCode=6
+// ToNumber=7 CallType=8 CallMethod=9 CallMode=10 Duration=11 CallDate=12 CallTime=13
+// Notes=14 UniqueId=15 AudioUrl=16 Transcript=17 Stage=18 AppFormPct=19 PayInit=20
+// AppFormInit=21 Source=22 Lead/AppStartStage=23 CallDurationMins=24
+
+function serialToDateStr(serial) {
+  const n = Number(serial)
+  if (isNaN(n) || n < 40000) return null
+  return new Date((Math.floor(n) - 25569) * 86400 * 1000).toISOString().slice(0, 10)
+}
+
+function buildCallRow(row) {
+  const uniqueid = cell(row, 15)
+  if (!uniqueid) return null
+  const durMins = Number(row[24])
+  return {
+    uniqueid,
+    call_date:              serialToDateStr(row[12]),
+    sr_no:                  cell(row, 0),
+    emp_code:               cell(row, 1),
+    emp_tags:               cell(row, 2),
+    employee_name:          cell(row, 3),
+    employee_number:        cell(row, 4),
+    to_name:                cell(row, 5),
+    country_code:           cell(row, 6),
+    to_number:              cell(row, 7),
+    call_type:              cell(row, 8),
+    call_method:            cell(row, 9),
+    call_mode:              cell(row, 10),
+    duration:               cell(row, 11),
+    call_time:              cell(row, 13),
+    notes:                  cell(row, 14),
+    audio_url:              cell(row, 16),
+    call_transcript:        cell(row, 17),
+    stage:                  cell(row, 18),
+    app_form_completed_pct: cell(row, 19),
+    payment_initiated:      cell(row, 20),
+    app_form_initiated:     cell(row, 21),
+    source:                 cell(row, 22),
+    lead_app_start_stage:   cell(row, 23),
+    call_duration_mins:     isNaN(durMins) ? null : durMins,
+  }
+}
+
 // ── Main handler ─────────────────────────────────────────────────────────────
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*')
@@ -247,6 +293,26 @@ export default async function handler(req, res) {
 
     const adCount = await upsertRows('app_start_history', appDynamic, 'snapshot_date,application_number')
     log.push(`app_start_history: upserted ${adCount}`)
+
+    // ── 3. Fetch + snapshot Callyzer calls ────────────────────────────────────
+    // The calls sheet is a rolling ~36-day window; upsert everything currently
+    // in it, deduped by UniqueId (immutable → DO NOTHING on conflict), so each
+    // day's calls are captured in the DB before they roll off the sheet.
+    // Isolated in its own try/catch: a calls hiccup must never fail the lead/app
+    // snapshots above, which the dashboard and prev-stage feature depend on.
+    try {
+      log.push('Fetching Call History updated Daily A:Y…')
+      const callSheetRows = await fetchSheet('Call History updated Daily', 'A:Y', CALLS_ID)
+      log.push(`Call History: ${callSheetRows.length} rows`)
+      const calls = [...new Map(
+        callSheetRows.map(buildCallRow).filter(Boolean).map(r => [r.uniqueid, r])
+      ).values()]
+      const cCount = await upsertRows('call_history', calls, 'uniqueid', { ignoreDuplicates: true })
+      log.push(`call_history: upserted ${cCount}`)
+    } catch (callErr) {
+      log.push(`call_history: SKIPPED (${callErr.message})`)
+      console.error('[api/snapshot] calls capture failed:', callErr.message)
+    }
 
     const durationMs = Date.now() - start
     log.push(`Done in ${(durationMs / 1000).toFixed(1)}s`)

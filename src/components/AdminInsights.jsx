@@ -758,19 +758,20 @@ function CallTypeDonut({ rows, onDrill }) {
   )
 }
 
-function StageBarChart({ rows, onDrill }) {
+function StageBarChart({ rows, onDrill, stageKey = "leadStage", title = "Stage Breakdown",
+                         info = "Counts all calls made today grouped by the lead's current CRM stage. Click a bar to see raw calls for that stage." }) {
   const allStages = useMemo(() => {
-    const set = new Set(rows.map(r => r.leadStage || "Unknown"))
+    const set = new Set(rows.map(r => r[stageKey] || "Unknown"))
     return [
       ...STAGE_ORDER.filter(s => set.has(s)),
       ...[...set].filter(s => !STAGE_ORDER.includes(s) && s !== "Unknown").sort(),
     ]
-  }, [rows])
+  }, [rows, stageKey])
 
   const data = allStages.map(s => ({
     name: s.length > 22 ? s.slice(0, 20) + "…" : s,
     fullName: s,
-    value: rows.filter(r => (r.leadStage || "Unknown") === s).length,
+    value: rows.filter(r => (r[stageKey] || "Unknown") === s).length,
     color: STAGE_COLORS[s] || "#94a3b8",
   })).sort((a, b) => b.value - a.value)
 
@@ -779,14 +780,14 @@ function StageBarChart({ rows, onDrill }) {
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5">
       <div className="flex items-center justify-between mb-4">
-        <div className="text-sm font-semibold text-gray-800">Stage Breakdown</div>
-        <InfoBadge text="Counts all calls made today grouped by the lead's current CRM stage. Click a bar to see raw calls for that stage." />
+        <div className="text-sm font-semibold text-gray-800">{title}</div>
+        <InfoBadge text={info} />
       </div>
       <div className="space-y-3">
         {data.map(d => (
           <div key={d.fullName}
             className={onDrill ? "cursor-pointer group" : ""}
-            onClick={() => onDrill?.(d.fullName, rows.filter(r => (r.leadStage || "Unknown") === d.fullName))}>
+            onClick={() => onDrill?.(d.fullName, rows.filter(r => (r[stageKey] || "Unknown") === d.fullName))}>
             <div className="flex justify-between items-center mb-1">
               <span className={`text-xs truncate max-w-[180px] ${onDrill ? "text-gray-700 group-hover:text-gray-900" : "text-gray-600"}`}
                 title={d.fullName}>{d.fullName}</span>
@@ -1812,6 +1813,8 @@ function DrillDrawer({ drill, onClose }) {
     { key: "section", label: "Section" },
     { key: "leadStage", label: "Stage" },
     { key: "subStage", label: "Sub-stage" },
+    { key: "prevStage", label: "Prev Stage" },
+    { key: "prevSubStage", label: "Prev Sub-stage" },
     { key: "source", label: "Source" },
     { key: "notes", label: "Notes" },
   ]
@@ -3066,6 +3069,12 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
               <StageBarChart rows={visibleRows} onDrill={(label, rows) => openDrill(`Stage: ${label}`, rows, "calls")} />
               <SourceBarChart rows={visibleRows} onDrill={(label, rows) => openDrill(`Source: ${label}`, rows, "calls")} />
             </div>
+            <div className="grid grid-cols-1 gap-4">
+              <StageBarChart rows={visibleRows} stageKey="prevStage"
+                title="Previous lead stage breakdown of called leads"
+                info="For leads called on this date, the stage they were in the DAY BEFORE — from that day's end-of-day snapshot, i.e. before this day's calls. Click a bar to see the raw calls. Leads with no prior-day snapshot show as 'New / no prior day'."
+                onDrill={(label, rows) => openDrill(`Prev stage: ${label}`, rows, "calls")} />
+            </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               <CallTypeDonut rows={visibleRows} onDrill={(label, rows) => openDrill(`Call type: ${label}`, rows, "calls")} />
               <ConnectedBySection rows={visibleRows} onDrill={(label, rows) => openDrill(label, rows, "calls")} />
@@ -4188,31 +4197,44 @@ export default function AdminInsights() {
           return d.rows || []
         }
 
-        const [callsDataRaw, leadRaw] = await Promise.all([
-          fetchCached('Call History updated Daily', 'A2:Y'),
+        // Calls now come from the DB (call_history) one date at a time via
+        // /api/calls — no live-sheet pull. A date not yet snapshotted (e.g. today
+        // before the nightly cron) returns []. Previous-day stage comes from
+        // /api/prev-stage (the day-before snapshot joined to the called number).
+        const fetchJson = async (url) => {
+          const r = await fetch(url)
+          if (!r.ok) throw new Error(`${url} → ${r.status}`)
+          return r.json()
+        }
+        const [callsResp, prevResp, leadRaw] = await Promise.all([
+          fetchJson(`/api/calls?date=${date}`),
+          fetchJson(`/api/prev-stage?date=${date}`).catch(e => { console.warn('prev-stage failed:', e.message); return { map: {} } }),
           fetchCached('Lead Dump', 'A:CK'),
         ])
+        const callsDataRaw = callsResp.rows || []
+        const prevMap = prevResp.map || {}
         // Prepend synthetic header so parseCallsHistory's slice(1) works correctly.
-        // Must match the live sheet layout exactly (cols A–Y, 0-indexed).
+        // Must match the Callyzer A–Y column layout exactly (0-indexed).
         const CALLS_HEADER = ["Sr. No.", "Emp. Code", "Emp. Tags", "Employee Name", "Employee Number", "To Name", "Country Code", "To Number", "Call Type", "Call Method", "Call Mode", "Duration", "Call Date", "Call Time", "Notes", "UniqueId", "Audio Url", "Call Transcript", "Stage", "Application Form Completed %", "Payment Initiated", "Application Form Initiated", "Source", "Lead/App Start Stage", "Call Duration in Mins"]
         const callsRaw = [CALLS_HEADER, ...callsDataRaw]
         const appRaw = await fetchCached('App Start Dump', 'A:EY').catch(e => {
           console.warn('App Start Dump fetch failed:', e.message)
           return []
         })
-        if (callsRaw.length === 0) throw new Error("Call History updated Daily sheet returned no data — check VITE_CALLS_HISTORY_SHEET_ID, sharing settings, and API key.")
         const { subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap } = buildLeadMaps(leadRaw, appRaw)
-        const rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
-        // Capture diagnostic info: raw row count, date-matched count, latest parsed date in sheet
-        const latestParsed = callsDataRaw.reduce((best, row) => {
-          const d = parseDate(row[12])
-          return d && (!best || d > best) ? d : best
-        }, null)
+        let rows = parseCallsHistory(callsRaw, new Date(date), subStageMap, notesMap, stageTypeMap, leadStageMap, sourceMap)
+        // Attach each called lead's PREVIOUS-day stage/substage (before this day's calls).
+        rows = rows.map(r => {
+          const pv = prevMap[r.toNumber]
+          return { ...r, prevStage: pv ? (pv.stage || "Unknown") : "New / no prior day", prevSubStage: pv ? (pv.subStage || "") : "" }
+        })
+        // Diagnostics: matched rows + the latest date actually present in the DB
+        // (so the "no calls" banner can offer to jump there).
         if (!cancelled) setDiagInfo({
           rawRows: callsDataRaw.length,
           matched: rows.length,
           sampleDate: callsDataRaw[0]?.[12] ?? "—",
-          latestDate: latestParsed ? latestParsed.toISOString().slice(0, 10) : "—",
+          latestDate: callsResp.latestAvailable || (callsDataRaw.length ? date : "—"),
         })
         const pipeline = buildPipelineRows(leadRaw, leadRaw, appRaw, appRaw)
         const activePipeline = pipeline.filter(row => !isPaymentCompleted(row.paymentStatus))
