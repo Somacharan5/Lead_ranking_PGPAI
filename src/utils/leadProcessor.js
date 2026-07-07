@@ -73,6 +73,21 @@ function pmaxBlocked(source, formPct) {
 }
 
 // ============================================================================
+// GRADUATION-YEAR GATE — Fresh Leads only
+// ============================================================================
+// Exclude fresh leads whose graduation year (Lead Dump col CB) is 2027 or later.
+// It is mid-2026, so a 2027+ grad year means the lead is still completing their
+// degree and isn't in-market for the PG programme yet — counsellor bandwidth is
+// better spent on graduates/professionals. Blank / non-numeric grad years are
+// KEPT (never drop a lead we're merely unsure about). Bump the constant each
+// cycle, or switch to `new Date().getFullYear() + 1` to auto-advance.
+const MIN_EXCLUDED_GRAD_YEAR = 2027
+function gradYearBlocked(gradYearRaw) {
+  const y = parseInt(String(gradYearRaw ?? '').trim(), 10)
+  return !isNaN(y) && y >= MIN_EXCLUDED_GRAD_YEAR
+}
+
+// ============================================================================
 // CAMPAIGN BLACKOUT HELPERS
 // ============================================================================
 
@@ -206,6 +221,7 @@ function spokeToday(lastActivityStr) {
 //   BD (Lead Stage)             = "Untouched"
 //   BC (Counsellor)             = [logged-in counsellor]
 //   BA (Registered On)          ≤ yesterday
+//   CB (Graduation Year)        < 2027    ← drop not-yet-graduated (blank/unknown kept)
 //   BK (Counsellor Last Activ)  ≠ today   ← lag-window: just-called leads stay
 //                                           hidden until tomorrow
 // ============================================================================
@@ -220,6 +236,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
     const counsellor    = (getCol(row, 'BC') || '').trim().toLowerCase()
     const source        = getCol(row, 'G')
     const regOn         = getCol(row, 'BA')
+    const gradYear      = getCol(row, 'CB')
     return (
       userType === 'lead' &&
       paymentStatus !== 'completed' &&
@@ -227,6 +244,7 @@ export function getFreshLeads(leadDumpRows, counsellorName) {
       counsellor === normName &&
       !isJunkSource(source) &&
       !pmaxBlocked(source) &&
+      !gradYearBlocked(gradYear) &&
       isYesterdayOrOlder(regOn)
     )
   })
