@@ -45,8 +45,16 @@ export function colLetterToIndex(letter) {
   return result - 1
 }
 
-// Get value from row by column letter
+// Get value from row by column letter.
+// ALWAYS returns a string. The Sheets API (UNFORMATTED_VALUE) returns raw numbers
+// for numeric cells, and downstream code calls .toLowerCase()/.replace()/.trim()
+// on these values — so a numeric cell (or a column-misaligned cache blob) would
+// otherwise throw "x.toLowerCase is not a function" and take the whole dashboard
+// down. Coercing to string here keeps a single bad/shifted cell from causing a
+// full outage. Semantics match the old `row[idx] || ''` (0/''/null → '').
 export function getCol(row, letter) {
   const idx = colLetterToIndex(letter)
-  return row[idx] || ''
+  const v = row[idx]
+  if (!v) return ''
+  return String(v)
 }
