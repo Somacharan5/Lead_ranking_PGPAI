@@ -16,19 +16,29 @@ export async function getRefreshSignal() {
   }
 }
 
-// Trigger a refresh (admin only) - calls Apps Script web app + busts server-side sheet cache
+// Trigger a refresh (admin only).
+// The critical action is busting the server-side sheet cache so every dashboard
+// re-reads fresh from Sheets on its next load — this runs FIRST and its result
+// determines success. Pinging the Apps Script (a legacy signal that nudges other
+// open dashboards to reload via the Config-sheet timestamp) is best-effort:
+// fire-and-forget so a down / 403 / slow Apps Script can never block or fail the
+// actual refresh. (Previously the cache-bust was gated behind the Apps Script
+// call, so a dead Apps Script deployment silently broke the whole button.)
 export async function triggerGlobalRefresh() {
-  if (!APPS_SCRIPT_URL) {
-    return { success: false, error: 'Apps Script URL not configured' }
+  let invalidated = false
+  try {
+    const r = await fetch('/api/sheets?action=invalidate_all', { method: 'POST' })
+    invalidated = r.ok
+  } catch (error) {
+    return { success: false, error: `Cache refresh failed: ${error.message}` }
   }
 
-  try {
-    // Use no-cors mode since Apps Script may not return CORS headers
-    await fetch(APPS_SCRIPT_URL, { method: 'GET', mode: 'no-cors' })
-    // Also bust the server-side Supabase sheet cache so everyone gets fresh data
-    await fetch('/api/sheets?action=invalidate_all', { method: 'POST' }).catch(() => {})
-    return { success: true }
-  } catch (error) {
-    return { success: false, error: error.message }
+  // Best-effort cross-dashboard signal — intentionally NOT awaited.
+  if (APPS_SCRIPT_URL) {
+    fetch(APPS_SCRIPT_URL, { method: 'GET', mode: 'no-cors' }).catch(() => {})
   }
+
+  return invalidated
+    ? { success: true }
+    : { success: false, error: 'Cache refresh endpoint returned an error' }
 }
