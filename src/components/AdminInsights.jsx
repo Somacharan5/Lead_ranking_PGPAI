@@ -76,6 +76,9 @@ const NAME_MAP = {
   // TODO: update these to match exact CRM column values once confirmed
   "Harsha": "Harsha",
   "HARSHA": "Harsha",
+  // Callyzer logs her full name — consolidate those calls under "Harsha".
+  "Harsha Vardhini Pirupilli": "Harsha",
+  "HARSHA VARDHINI PIRUPILLI": "Harsha",
   "Drishti Majumdar": "Drishti Majumdar",
   "Drishti": "Drishti Majumdar",
   "DRISHTI": "Drishti Majumdar",
