@@ -36,10 +36,10 @@ export default function HomePage() {
             </div>
           </Link>
           
-          <Link to="/sanjana" className="block p-4 bg-teal-50 hover:bg-teal-100 border-2 border-teal-200 rounded-lg transition">
+          <Link to="/harsha" className="block p-4 bg-teal-50 hover:bg-teal-100 border-2 border-teal-200 rounded-lg transition">
             <div className="flex items-center justify-between">
-              <span className="font-semibold text-teal-700">👤 Sanjana</span>
-              <span className="text-xs text-teal-500">/sanjana →</span>
+              <span className="font-semibold text-teal-700">👤 Harsha</span>
+              <span className="text-xs text-teal-500">/harsha →</span>
             </div>
           </Link>
 
