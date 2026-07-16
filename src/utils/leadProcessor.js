@@ -38,9 +38,12 @@ import { fetchSheetData, getCol } from './sheetsApi'
 const LEAD_COUNSELED_SUBSTAGES  = new Set(['hot', 'warm', 'cold'])
 // NOTE: 'dnp2' is intentionally excluded from Followup Leads for now — counsellors
 // should not work DNP2 followups yet. To re-enable, add 'dnp2' back to this set.
-const LEAD_NCE_SUBSTAGES        = new Set(['call later', 'disconnected', 'dnp', 'not reachable'])
+// NOTE: 'call later' is intentionally NOT in these NCE sets — call-later leads now
+// live ONLY in their own dedicated "Call Later" tab (see getCallLaterLeads), not the
+// Followup / App-Followup tabs. Re-add it here if you ever want them in both.
+const LEAD_NCE_SUBSTAGES        = new Set(['disconnected', 'dnp', 'not reachable'])
 const APP_COUNSELED_SUBSTAGES   = new Set(['hot', 'warm', 'cold'])
-const APP_NCE_SUBSTAGES         = new Set(['call later', 'dnp', 'dnp2'])
+const APP_NCE_SUBSTAGES         = new Set(['dnp', 'dnp2'])
 
 // ============================================================================
 // SOURCE EXCLUSIONS — applied to every section, both dumps, every counsellor
@@ -616,6 +619,133 @@ export function getMyCounselling(leadDumpRows, appStartDumpRows, counsellorName)
 }
 
 // ============================================================================
+// SECTION 6: Call Later — dedicated tab for the call-back promises counsellors
+//            make and then forget. Pulls from BOTH pipelines into one list.
+// ============================================================================
+//
+// SHOW a person if ANY of their records is a live call-later:
+//   Lead Dump:      BD (Lead Stage)        = "No Contact Established"
+//                   AND BE (Lead Sub Stage) = "Call later"
+//   App Start Dump: AU (Application Stage)  = "No Contact Established"
+//                   AND AV (App Sub Stage)  = "Call later"
+//
+// HIDE that person ENTIRELY if — matched across BOTH dumps by phone(last 10)/email —
+// ANY of their records shows a disqualified stage (Not Interested / Intent Dropped /
+// Not Eligible). A dead flag anywhere overrides a call-later flag elsewhere.
+//
+// Design choices (confirmed):
+//   • UNCAPPED — not part of the 300/day allocation; the whole point is nothing slips.
+//   • NO timing gate — every standing call-later shows, even one set today.
+//   • Payment = "Completed" IS excluded (a converted lead is never chased as call-later).
+//   • Junk-source / pmax / blackout / priority-5 filters are deliberately NOT applied —
+//     these are leads the counsellor personally engaged, mirroring My Counselling.
+// ============================================================================
+const CALL_LATER_DISQUALIFIED = new Set(['not interested', 'not eligible', 'intent dropped'])
+
+// Person identity across dumps: last-10 phone digits, falling back to lowercased email.
+function personKey(mobile, email) {
+  const phone = String(mobile || '').replace(/\D/g, '').slice(-10)
+  return phone || String(email || '').trim().toLowerCase()
+}
+
+export function getCallLaterLeads(leadDumpRows, appStartDumpRows, counsellorName) {
+  const normName = counsellorName.toLowerCase()
+
+  // 1) Cross-dump disqualified-person set. Scanned across ALL counsellors — a
+  //    "not interested / intent dropped / not eligible" status belongs to the
+  //    person, not to whoever owns that particular record.
+  const disqualified = new Set()
+  leadDumpRows.slice(1).forEach(row => {
+    const stage = (getCol(row, 'BD') || '').toLowerCase().trim()
+    if (CALL_LATER_DISQUALIFIED.has(stage)) {
+      disqualified.add(personKey(getCol(row, 'C'), getCol(row, 'B')))
+    }
+  })
+  appStartDumpRows.slice(1).forEach(row => {
+    const appStage  = (getCol(row, 'AU') || '').toLowerCase().trim()
+    const leadStage = (getCol(row, 'AT') || '').toLowerCase().trim()
+    if (CALL_LATER_DISQUALIFIED.has(appStage) || CALL_LATER_DISQUALIFIED.has(leadStage)) {
+      disqualified.add(personKey(getCol(row, 'O'), getCol(row, 'N')))
+    }
+  })
+
+  // 2) Lead-pipeline call-laters
+  const leadHits = leadDumpRows.slice(1)
+    .filter(row => {
+      const counsellor = (getCol(row, 'BC') || '').trim().toLowerCase()
+      const userType   = (getCol(row, 'AG') || '').toLowerCase().trim()
+      const stage      = (getCol(row, 'BD') || '').toLowerCase().trim()
+      const subStage   = (getCol(row, 'BE') || '').toLowerCase().trim()
+      const payment    = (getCol(row, 'AJ') || '').toLowerCase().trim()
+      if (counsellor !== normName || userType !== 'lead') return false
+      if (payment === 'completed') return false
+      if (stage !== 'no contact established' || subStage !== 'call later') return false
+      return !disqualified.has(personKey(getCol(row, 'C'), getCol(row, 'B')))
+    })
+    .map(row => ({
+      name:                   getCol(row, 'A'),
+      email:                  getCol(row, 'B'),
+      mobile:                 getCol(row, 'C'),
+      source:                 getCol(row, 'G'),
+      registeredOn:           getCol(row, 'BA'),
+      medium:                 getCol(row, 'H'),
+      counsellorLastActivity: getCol(row, 'BK'),
+      campaign:               getCol(row, 'I'),
+      blackoutCampaign:       getCol(row, 'H'),
+      stage:                  getCol(row, 'BD'),
+      subStage:               getCol(row, 'BE'),
+      notes:                  getCol(row, 'BP'),
+      score:                  parseFloat(getCol(row, 'CJ')) || 0,
+      counsellor:             getCol(row, 'BC'),
+      priority:               getCol(row, 'CK'),
+      category:               'Call Later',
+    }))
+
+  // 3) App-Start-pipeline call-laters
+  const appHits = appStartDumpRows.slice(1)
+    .filter(row => {
+      const counsellor = (getCol(row, 'AR') || '').trim().toLowerCase()
+      const appStage   = (getCol(row, 'AU') || '').toLowerCase().trim()
+      const subStage   = (getCol(row, 'AV') || '').toLowerCase().trim()
+      const payment    = (getCol(row, 'C')  || '').toLowerCase().trim()
+      if (counsellor !== normName) return false
+      if (payment === 'completed') return false
+      if (appStage !== 'no contact established' || subStage !== 'call later') return false
+      return !disqualified.has(personKey(getCol(row, 'O'), getCol(row, 'N')))
+    })
+    .map(row => ({
+      name:                   getCol(row, 'M'),
+      email:                  getCol(row, 'N'),
+      mobile:                 getCol(row, 'O'),
+      source:                 getCol(row, 'S'),
+      registeredOn:           getCol(row, 'Q'),
+      medium:                 getCol(row, 'T'),
+      counsellorLastActivity: getCol(row, 'BG'),
+      campaign:               getCol(row, 'U'),
+      blackoutCampaign:       getCol(row, 'W'),
+      stage:                  getCol(row, 'AU'),
+      subStage:               getCol(row, 'AV'),
+      notes:                  getCol(row, 'BM'),
+      score:                  parseFloat(getCol(row, 'EX')) || 0,
+      counsellor:             getCol(row, 'AR'),
+      priority:               getCol(row, 'EY'),
+      category:               'App Call Later',
+    }))
+
+  // 4) Dedup across dumps by person — App Start wins over Lead (more advanced stage).
+  const seen = new Set()
+  const combined = [...appHits, ...leadHits].filter(lead => {
+    const key = personKey(lead.mobile, lead.email)
+    if (!key) return true
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+
+  return sortLeads(combined)
+}
+
+// ============================================================================
 // SORTING & ALLOCATION
 // ============================================================================
 
@@ -727,5 +857,8 @@ export async function getLeadsForCounsellor(counsellorName) {
 
   const myCounselling = getMyCounselling(leadDump, appStartDump, counsellorName)
 
-  return { ...allocation, spokenToday, myCounselling }
+  // Call Later — its own uncapped list; does NOT flow through allocateLeads / blackouts.
+  const callLater = getCallLaterLeads(leadDump, appStartDump, counsellorName)
+
+  return { ...allocation, spokenToday, myCounselling, callLater }
 }

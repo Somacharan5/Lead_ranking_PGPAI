@@ -150,6 +150,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
     if (!data) return
     
     const leadsMap = {
+      calllater: data.callLater || [],
       fresh: data.freshLeads,
       followup: data.followupLeads,
       newapp: data.newAppStart,
@@ -171,6 +172,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
 
   const getCurrentLeads = () => {
     if (!data) return []
+    if (activeTab === 'calllater') return data.callLater || []
     if (activeTab === 'fresh') return data.freshLeads
     if (activeTab === 'followup') return data.followupLeads
     if (activeTab === 'newapp') return data.newAppStart
@@ -332,7 +334,15 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
 
             {/* TAB NAVIGATION */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-4 overflow-hidden">
-              <div className="grid grid-cols-3 md:grid-cols-5">
+              <div className="grid grid-cols-3 md:grid-cols-6">
+                <TabButton
+                  active={activeTab === 'calllater'}
+                  onClick={() => setActiveTab('calllater')}
+                  label="⏰ Call Later"
+                  fullLabel="⏰ Call Laters"
+                  count={(data.callLater || []).length}
+                  color="red"
+                />
                 <TabButton
                   active={activeTab === 'newapp'}
                   onClick={() => setActiveTab('newapp')}
@@ -411,6 +421,7 @@ export default function Dashboard({ counsellorName: initialCounsellor, isAdmin }
 
 function TabButton({ active, onClick, label, fullLabel, count, color }) {
   const colors = {
+    red:    { bg: 'bg-red-50',    text: 'text-red-700',    activeBg: 'bg-red-100',    border: 'border-red-500'    },
     green:  { bg: 'bg-green-50',  text: 'text-green-700',  activeBg: 'bg-green-100',  border: 'border-green-500'  },
     orange: { bg: 'bg-orange-50', text: 'text-orange-700', activeBg: 'bg-orange-100', border: 'border-orange-500' },
     purple: { bg: 'bg-purple-50', text: 'text-purple-700', activeBg: 'bg-purple-100', border: 'border-purple-500' },

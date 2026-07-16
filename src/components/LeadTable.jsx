@@ -216,6 +216,8 @@ function CategoryBadge({ category }) {
     'App Followup':      'bg-pink-100 text-pink-700',
     'App Counselling':   'bg-indigo-100 text-indigo-700',
     'Lead Counselling':  'bg-teal-100 text-teal-700',
+    'Call Later':        'bg-red-100 text-red-700',
+    'App Call Later':    'bg-rose-100 text-rose-700',
   }
   return (
     <span className={`px-2 py-1 rounded-md text-xs font-medium whitespace-nowrap ${styles[category] || 'bg-gray-100 text-gray-700'}`}>
