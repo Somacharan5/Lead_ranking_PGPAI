@@ -3053,7 +3053,7 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
 
       {/* Sub-tabs */}
       <div className="bg-white border-b border-gray-200 px-5 flex gap-2 py-2.5">
-        {[["charts", "📊 Charts"], ["table", "📋 Pivot Table"], ["pipeline", "🎯 Pipeline"], ["ai", "✦ AI Insights"], ["paid-apps", "💰 Paid Apps"], ["transcripts", "🎙️ Transcripts"], ["leaderboard", "🏆 Leaderboard"]].map(([k, l]) => (
+        {[["charts", "📊 Charts"], ["table", "📋 Pivot Table"], ["pipeline", "🎯 Pipeline"], ["ai", "✦ AI Insights"], ["paid-apps", "💰 Paid Apps"], ["transcripts", "🎙️ Transcripts"], ["objections", "🚩 Objections"], ["leaderboard", "🏆 Leaderboard"]].map(([k, l]) => (
           <button key={k} onClick={() => setSubTab(k)}
             className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${subTab === k
                 ? "bg-gray-900 text-white"
@@ -3104,6 +3104,9 @@ function Detail({ date, setDate, allRows, pipelineRows, pipelineChanges, initial
         )}
         {subTab === "transcripts" && (
           <TranscriptionsPanel date={date} mainTab={mainTab} pipelineRows={pipelineRows} />
+        )}
+        {subTab === "objections" && (
+          <ObjectionsBucketPanel date={date} mainTab={mainTab} pipelineRows={pipelineRows} />
         )}
         {subTab === "leaderboard" && (
           <LeaderboardPanel appRows={appRows} />
@@ -3340,6 +3343,230 @@ IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call be
   const d = await r.json()
   const raw = d.content.map(b => b.text || '').join('').replace(/```json|```/g, '').trim()
   return robustJSONParse(raw)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBJECTIONS BUCKET — taxonomy + classifier
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// 8 admin-defined objection categories, each with fixed sub-categories. Claude
+// classifies each call's transcript into EVERY distinct category the LEAD raises
+// (multiple allowed — decision), forcing the closest sub-category (decision).
+// Calls with no objection are dropped (decision). Results cache per day in Neon
+// under objection_buckets:{counsellor}:{date} — fresh per date, computed on demand.
+
+const OBJECTION_TAXONOMY = [
+  {
+    key: "Fee & Affordability", short: "Fee",
+    color: "bg-red-100 text-red-700 border-red-200",
+    subs: [
+      { key: "Sticker shock – absolute price", hint: "Immediate reaction to the ₹22.65L number without context on ROI or EMI" },
+      { key: "Comparative price objection", hint: "Benchmarking against cheaper alternatives like IIT certs, online courses, or free YouTube" },
+      { key: "Self-funding strain", hint: "Sole earner, family financial obligations, or existing loan EMIs making investment feel impossible" },
+      { key: "Free-course expectation", hint: "Enrolled expecting a workshop or free resource — programme cost comes as a surprise" },
+    ],
+  },
+  {
+    key: "Low / No Intent", short: "Low Intent",
+    color: "bg-orange-100 text-orange-700 border-orange-200",
+    subs: [
+      { key: "Job-first, course-later", hint: "Wants a job before upskilling — not opposed to the programme, just sequencing it differently" },
+      { key: "Casual explorer / accidental form fill", hint: "Low commitment — browsing, curious, or form filled by someone else" },
+      { key: "Already upskilling elsewhere", hint: "Currently enrolled in another AI or tech programme — sees no immediate need" },
+      { key: "Actively disinterested / repeated no", hint: "Clear, firm rejection with no openness — should be tagged DND and deprioritised" },
+      { key: "Career direction mismatch", hint: "Wants MBA, CAT, product management, or a different domain entirely — not AI-focused" },
+    ],
+  },
+  {
+    key: "Timing & Availability", short: "Timing",
+    color: "bg-amber-100 text-amber-700 border-amber-200",
+    subs: [
+      { key: "In-call unavailability", hint: "In a meeting, driving, in class — timing of the call is wrong, not the intent" },
+      { key: "Life-stage too early", hint: "Still in B.Tech, just started internship, or planning post-grad in 2-3 years — future cohort candidate" },
+      { key: "Personal constraint", hint: "Marriage, relocation, family care, health, or travel making commitment difficult right now" },
+      { key: "Competing exam / programme prep", hint: "Focused on CAT, GATE, or campus placements — AI upskilling is secondary priority currently" },
+      { key: "Long programme duration", hint: "15-month commitment feels too long — comparing with shorter cert courses or MBA timelines" },
+    ],
+  },
+  {
+    key: "Programme Fit", short: "Programme Fit",
+    color: "bg-purple-100 text-purple-700 border-purple-200",
+    subs: [
+      { key: "Non-tech / no coding background", hint: "No Python or programming foundation — worried they will not keep up with curriculum" },
+      { key: "Already overqualified", hint: "Has M.Tech, PhD, or is already working as an AI engineer — does not see curriculum value" },
+      { key: "Wrong programme type", hint: "Looking for MBA, supply chain, data science degree, or PGDM — not applied AI specifically" },
+      { key: "Location / attendance constraint", hint: "Cannot relocate to Gurugram for campus — unaware of or sceptical about online track" },
+      { key: "Certification vs degree ambiguity", hint: "Unclear if UGC-approved certification has same value as a degree for jobs or PhD eligibility" },
+    ],
+  },
+  {
+    key: "Trust & Credibility", short: "Trust",
+    color: "bg-pink-100 text-pink-700 border-pink-200",
+    subs: [
+      { key: "Brand / accreditation doubt", hint: "Questions UGC registration, first-batch risk, or university affiliation before committing" },
+      { key: "Placement claim scepticism", hint: "Doubts the 33 LPA average placement figure — wants receipts, not a pitch" },
+      { key: "Privacy / data concern", hint: "Upset about being contacted — disputes ever applying or questions how their number was obtained" },
+      { key: "Worried about personal failure", hint: "Fears being the weakest in the batch or not getting placed — needs a concrete support safety net" },
+    ],
+  },
+  {
+    key: "Family Gatekeeper", short: "Family",
+    color: "bg-blue-100 text-blue-700 border-blue-200",
+    subs: [
+      { key: "Parental veto on fees", hint: "Parents are the financial approver and are sceptical of a ₹22L certification for their child" },
+      { key: "Family business pressure", hint: "Parents expect the candidate to join the family business — AI is seen as irrelevant to their path" },
+      { key: "Spouse / peer influence", hint: "Partner or friends are pushing towards a different institute or path — needs comparative reassurance" },
+    ],
+  },
+  {
+    key: "Scholarship Threshold", short: "Scholarship",
+    color: "bg-cyan-100 text-cyan-700 border-cyan-200",
+    subs: [
+      { key: "Needs minimum % before applying", hint: "Will not go through the admission process unless they know what scholarship band they can expect" },
+      { key: "Placement guarantee before committing", hint: "Wants assurance of placement outcome before paying even a scholarship-reduced fee" },
+    ],
+  },
+  {
+    key: "Operational / Logistical", short: "Operational",
+    color: "bg-slate-100 text-slate-700 border-slate-200",
+    subs: [
+      { key: "Language barrier (Hindi / regional)", hint: "Not comfortable in English — call ends with no engagement; needs Hindi or regional language support" },
+      { key: "NOC / work permission concern", hint: "Worried about quitting their job or needing employer approval to attend the programme" },
+    ],
+  },
+]
+
+const OBJ_CAT_BY_LOWER = Object.fromEntries(OBJECTION_TAXONOMY.map(c => [c.key.toLowerCase(), c]))
+
+// Snap a raw {category, subCategory} from the model onto the fixed taxonomy.
+// Category must match a real category (case-insensitive) or the objection is dropped.
+// Sub-category is forced to the closest listed sub (exact → substring → first sub).
+function snapObjection(o) {
+  const cat = OBJ_CAT_BY_LOWER[String(o?.category || "").trim().toLowerCase()]
+  if (!cat) return null
+  const subLower = String(o?.subCategory || "").trim().toLowerCase()
+  let sub = cat.subs.find(s => s.key.toLowerCase() === subLower)
+  if (!sub && subLower) {
+    // No exact match → pick the sub with the most shared words ("force closest").
+    const words = new Set(subLower.split(/[^a-z0-9]+/).filter(w => w.length > 2))
+    let bestScore = 0
+    cat.subs.forEach(s => {
+      const score = s.key.toLowerCase().split(/[^a-z0-9]+/).reduce((n, w) => n + (w.length > 2 && words.has(w) ? 1 : 0), 0)
+      if (score > bestScore) { bestScore = score; sub = s }
+    })
+  }
+  if (!sub) sub = cat.subs[0]   // still nothing in common → first sub
+  return { category: cat.key, subCategory: sub.key }
+}
+
+// Classify one batch of transcripts. Returns [{ fileId, name, email, phone,
+// counsellor, source, objections:[{category, subCategory}] }] — no-objection
+// calls and unmatched categories are already filtered out.
+async function fetchObjectionClassification(transcripts, texts) {
+  if (!texts.length) return []
+
+  const taxonomyBlock = OBJECTION_TAXONOMY.map((cat, ci) =>
+    `${ci + 1}. ${cat.key}\n` + cat.subs.map(s => `     - ${s.key} (${s.hint})`).join("\n")
+  ).join("\n")
+
+  const block = transcripts.map((t, i) => {
+    const name = t.leadInfo?.name || t.customerPhone
+    const text = (texts[i] || "").replace(/[\r\n]+/g, " ").slice(0, 1500)
+    return `--- Call ${i + 1}: ${name} | Counsellor: ${t.counsellor} ---\n${text}`
+  }).join("\n\n")
+
+  const prompt =
+    `You are an admissions analyst for Masters Union (AI & Advanced Analytics programme, ₹22.65L fee). For each call transcript, classify the OBJECTIONS the LEAD (the customer — not the counsellor) raises.
+
+OBJECTION TAXONOMY — 8 main categories, each with fixed sub-categories:
+${taxonomyBlock}
+
+RULES:
+- For EACH call, list every DISTINCT category the lead actually raises. A call may raise multiple categories.
+- Within a category you include, pick the SINGLE best-fitting sub-category. You MUST use one of the listed sub-categories — never invent one; always force the closest match.
+- Classify only what the LEAD expresses; ignore the counsellor's pitch.
+- If a call has NO real objection (positive, neutral, only info-gathering, wrong number, or no answer), return an EMPTY objections array for it — do not force a category.
+- "Language barrier (Hindi / regional)" under Operational IS a valid bucket here — classify it whenever the lead is not comfortable in English (this is a bucket, not a quality judgement).
+
+Return ONLY raw JSON (no markdown, no code fences):
+{
+  "classifications": [
+    { "call": 1, "objections": [ { "category": "exact main category name", "subCategory": "exact sub-category name" } ] }
+  ]
+}
+One entry per call number above. objections is [] when the lead raises none.`
+
+  const r = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": import.meta.env.VITE_ANTHROPIC_API_KEY || "",
+      "anthropic-version": "2023-06-01",
+      "anthropic-dangerous-direct-browser-access": "true",
+    },
+    body: JSON.stringify({
+      model: "claude-sonnet-4-6",
+      max_tokens: 8192,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  })
+  if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
+  const d = await r.json()
+  const raw = d.content.map(b => b.text || "").join("").replace(/```json|```/g, "").trim()
+  const parsed = robustJSONParse(raw)
+  const list = parsed && Array.isArray(parsed.classifications) ? parsed.classifications : []
+
+  const out = []
+  list.forEach(c => {
+    const t = transcripts[(c.call || 0) - 1]
+    if (!t) return
+    const seenCat = new Set()
+    const objections = []
+    ;(Array.isArray(c.objections) ? c.objections : []).forEach(o => {
+      const snapped = snapObjection(o)
+      if (!snapped || seenCat.has(snapped.category)) return   // one sub per category
+      seenCat.add(snapped.category)
+      objections.push(snapped)
+    })
+    if (!objections.length) return   // exclude no-objection calls
+    const info = t.leadInfo
+    out.push({
+      fileId:     t.fileId,
+      name:       info?.name || `···${String(t.customerPhone || "").slice(-4)}`,
+      email:      info?.email || "",
+      phone:      t.customerPhone || info?.phone || "",
+      counsellor: t.counsellor || info?.counsellor || "",
+      source:     info?.source || "",
+      objections,
+    })
+  })
+  return out
+}
+
+// Group classified leads into { [category]: { total, leads[], subs:{[sub]:leads[]} } }.
+// A person (phone→email→fileId key) is counted once per category and once per sub.
+function buildObjectionBuckets(leads) {
+  const buckets = {}
+  OBJECTION_TAXONOMY.forEach(cat => {
+    buckets[cat.key] = {
+      total: 0, leads: [], subs: Object.fromEntries(cat.subs.map(s => [s.key, []])),
+      _catSeen: new Set(), _subSeen: {},
+    }
+  })
+  const idOf = l => (String(l.phone || "").replace(/\D/g, "").slice(-10)) || (l.email || "").toLowerCase() || l.fileId
+  leads.forEach(lead => {
+    const id = idOf(lead)
+    lead.objections.forEach(o => {
+      const b = buckets[o.category]
+      if (!b) return
+      if (!b._catSeen.has(id)) { b._catSeen.add(id); b.leads.push(lead) }
+      if (!b.subs[o.subCategory]) b.subs[o.subCategory] = []
+      if (!b._subSeen[o.subCategory]) b._subSeen[o.subCategory] = new Set()
+      if (!b._subSeen[o.subCategory].has(id)) { b._subSeen[o.subCategory].add(id); b.subs[o.subCategory].push(lead) }
+    })
+  })
+  Object.values(buckets).forEach(b => { b.total = b.leads.length })
+  return buckets
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -4144,6 +4371,264 @@ function TranscriptionsPanel({ date: propDate, mainTab, pipelineRows }) {
           <div className="text-3xl mb-3">🎙️</div>
           <div className="text-sm font-semibold text-gray-700 mb-1">No transcripts loaded</div>
           <div className="text-xs text-gray-400">No transcripts found for this date / counsellor</div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// OBJECTIONS BUCKET — panel (main-category → sub-category segregation)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
+  const [dateFilter, setDateFilter] = useState(propDate)
+  const [counsellorFilter, setCounsellorFilter] = useState(mainTab !== "overall" ? mainTab : "all")
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const [transcripts, setTranscripts] = useState([])
+  const [classifiedLeads, setClassifiedLeads] = useState(null)
+  const [classifying, setClassifying] = useState(false)
+  const [classifyErr, setClassifyErr] = useState("")
+  const [builtAt, setBuiltAt] = useState("")
+
+  const [activeCat, setActiveCat] = useState(null)
+  const [activeSub, setActiveSub] = useState("all")
+  const [copyMsg, setCopyMsg] = useState("")
+
+  // phone → pipeline row — the exact same join transcripts use for enrichment.
+  // Gives us each lead's email (looked up from Lead / App-Start dump) plus name/source.
+  const leadPhoneMap = useMemo(() => {
+    const m = {}
+    pipelineRows.forEach(r => { if (r.phone) m[r.phone] = r })
+    return m
+  }, [pipelineRows])
+
+  async function aiCacheGet(key) {
+    try { const r = await fetch(`/api/ai-cache?key=${encodeURIComponent(key)}`); const d = await r.json(); return d.hit ? d.result : null } catch { return null }
+  }
+  async function aiCacheSet(key, result) {
+    try { await fetch("/api/ai-cache", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ key, result }) }) } catch { /* non-fatal */ }
+  }
+
+  useEffect(() => { loadForDate() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFilter, counsellorFilter])
+
+  // Load the day's transcript list from Drive + any saved buckets for this date.
+  async function loadForDate() {
+    setLoading(true); setError(""); setTranscripts([]); setClassifiedLeads(null); setActiveCat(null); setBuiltAt("")
+    try {
+      const ps = new URLSearchParams({ action: "list", date: dateFilter })
+      if (counsellorFilter !== "all") ps.set("counsellor", counsellorFilter)
+      const r = await fetch(`/api/drive?${ps}`)
+      if (!r.ok) throw new Error(r.status === 404 ? "API route not found — deploy to Vercel first." : `Drive API error (${r.status})`)
+      const { files, error: apiErr } = await r.json()
+      if (apiErr) throw new Error(apiErr)
+      const enriched = (files || []).map(f => ({ ...f, leadInfo: leadPhoneMap[f.customerPhone] || null }))
+      setTranscripts(enriched)
+      const cached = await aiCacheGet(`objection_buckets:${counsellorFilter}:${dateFilter}`)
+      if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || "") }
+    } catch (e) { setError(e.message) } finally { setLoading(false) }
+  }
+
+  // Read every transcript, classify in batches via Claude, save the day's buckets.
+  async function runClassification(skipCache = false) {
+    if (!transcripts.length) return
+    setClassifying(true); setClassifyErr("")
+    try {
+      const cKey = `objection_buckets:${counsellorFilter}:${dateFilter}`
+      if (!skipCache) {
+        const cached = await aiCacheGet(cKey)
+        if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || ""); setClassifying(false); return }
+      }
+      const texts = await Promise.all(transcripts.map(async t => {
+        const r = await fetch(`/api/drive?action=read&fileId=${t.fileId}`); const d = await r.json(); return d.text || ""
+      }))
+      const BATCH = 25
+      const batches = []
+      for (let i = 0; i < transcripts.length; i += BATCH) batches.push({ ts: transcripts.slice(i, i + BATCH), tx: texts.slice(i, i + BATCH) })
+      const results = await Promise.all(batches.map(b => fetchObjectionClassification(b.ts, b.tx)))
+      const all = results.flat()
+      const stamp = new Date().toISOString()
+      setClassifiedLeads(all); setBuiltAt(stamp)
+      await aiCacheSet(cKey, { leads: all, builtAt: stamp })
+    } catch (e) { setClassifyErr(e.message) } finally { setClassifying(false) }
+  }
+
+  const buckets = useMemo(() => (classifiedLeads ? buildObjectionBuckets(classifiedLeads) : null), [classifiedLeads])
+  const totalObjectionLeads = useMemo(() => {
+    if (!classifiedLeads) return 0
+    const ids = new Set(classifiedLeads.map(l => String(l.phone || "").replace(/\D/g, "").slice(-10) || (l.email || "").toLowerCase() || l.fileId))
+    return ids.size
+  }, [classifiedLeads])
+
+  // Default to the first non-empty category whenever buckets change.
+  useEffect(() => {
+    if (!buckets) { setActiveCat(null); return }
+    setActiveCat(prev => (prev && buckets[prev]?.total > 0) ? prev : (OBJECTION_TAXONOMY.find(c => buckets[c.key].total > 0)?.key || OBJECTION_TAXONOMY[0].key))
+    setActiveSub("all")
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buckets])
+
+  function copyEmails(leadArr, label) {
+    const emails = [...new Set(leadArr.map(l => (l.email || "").trim().toLowerCase()).filter(Boolean))]
+    if (!emails.length) { setCopyMsg("No emails found"); setTimeout(() => setCopyMsg(""), 2500); return }
+    navigator.clipboard.writeText(emails.join(", "))
+    setCopyMsg(`✓ Copied ${emails.length} email${emails.length === 1 ? "" : "s"}${label ? " · " + label : ""}`)
+    setTimeout(() => setCopyMsg(""), 2500)
+  }
+
+  const selCls = "border border-gray-200 rounded-lg px-3 py-1.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-red-500 bg-white"
+  const activeMeta   = activeCat ? OBJECTION_TAXONOMY.find(c => c.key === activeCat) : null
+  const activeBucket = activeCat && buckets ? buckets[activeCat] : null
+  const shownLeads   = !activeBucket ? [] : (activeSub === "all" ? activeBucket.leads : (activeBucket.subs[activeSub] || []))
+
+  return (
+    <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="bg-white rounded-xl border border-gray-200 shadow-sm px-4 py-3 flex flex-wrap items-center gap-3">
+        <span className="text-sm font-semibold text-gray-700">🚩 Objections Bucket</span>
+        <input type="date" value={dateFilter} onChange={e => setDateFilter(e.target.value)} className={selCls} />
+        <select value={counsellorFilter} onChange={e => setCounsellorFilter(e.target.value)} className={selCls}>
+          <option value="all">All counsellors</option>
+          {MAIN_COUNSELLORS.map(c => <option key={c.key} value={c.key}>{c.short}</option>)}
+        </select>
+        <span className="ml-auto text-xs text-gray-400">
+          {loading ? "Loading…" : transcripts.length > 0 ? `${transcripts.length} transcripts` : ""}
+        </span>
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">{error}</div>}
+
+      {!loading && transcripts.length === 0 && !error && (
+        <div className="bg-white rounded-xl border border-gray-200 p-14 text-center">
+          <div className="text-3xl mb-3">🚩</div>
+          <div className="text-sm font-semibold text-gray-700 mb-1">No transcripts for this date</div>
+          <div className="text-xs text-gray-400">Pick another date or counsellor</div>
+        </div>
+      )}
+
+      {transcripts.length > 0 && !classifiedLeads && !classifying && (
+        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center">
+          <div className="text-2xl mb-3">🤖</div>
+          <div className="text-sm font-semibold text-gray-800 mb-1">Bucket objections for {dateFilter}</div>
+          <div className="text-xs text-gray-400 mb-5">Read {transcripts.length} transcripts and segregate leads into objection categories &amp; sub-categories</div>
+          <button onClick={() => runClassification(false)} className="px-5 py-2 bg-gray-900 hover:bg-gray-700 text-white rounded-lg text-xs font-semibold transition">✦ Bucket Objections</button>
+        </div>
+      )}
+
+      {classifying && (
+        <div className="bg-white rounded-xl border border-gray-200 p-10 text-center">
+          <div className="inline-block w-8 h-8 border-2 border-gray-900 border-t-transparent rounded-full animate-spin mb-4" />
+          <div className="text-sm text-gray-600">Reading &amp; bucketing transcripts…</div>
+          <div className="text-xs text-gray-400 mt-1">{transcripts.length} transcripts · batched · may take 30–60 seconds</div>
+        </div>
+      )}
+
+      {classifyErr && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-sm text-red-700">
+          {classifyErr}
+          <button onClick={() => runClassification(true)} className="ml-3 underline text-xs">Retry</button>
+        </div>
+      )}
+
+      {buckets && !classifying && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div className="text-xs text-gray-500">
+              <strong className="text-gray-800">{totalObjectionLeads}</strong> lead{totalObjectionLeads === 1 ? "" : "s"} with objections
+              {builtAt && <span className="text-gray-400"> · bucketed {new Date(builtAt).toLocaleString("en-IN")}</span>}
+            </div>
+            <div className="flex items-center gap-2">
+              {copyMsg && <span className="text-emerald-600 text-xs font-medium">{copyMsg}</span>}
+              <button onClick={() => runClassification(true)} className="px-3 py-1.5 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-xs font-medium transition">🔄 Re-bucket</button>
+            </div>
+          </div>
+
+          {/* Main category tabs */}
+          <div className="flex flex-wrap gap-2">
+            {OBJECTION_TAXONOMY.map(cat => {
+              const n = buckets[cat.key].total
+              const active = activeCat === cat.key
+              return (
+                <button key={cat.key} disabled={n === 0}
+                  onClick={() => { setActiveCat(cat.key); setActiveSub("all") }}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition ${active ? "bg-gray-900 text-white border-gray-900" : n === 0 ? "bg-gray-50 text-gray-300 border-gray-100 cursor-not-allowed" : "bg-white hover:bg-gray-50 text-gray-700 border-gray-200"}`}>
+                  {cat.short} <span className={active ? "text-gray-300" : "text-gray-400"}>({n})</span>
+                </button>
+              )
+            })}
+          </div>
+
+          {activeMeta && activeBucket && (
+            <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+              {/* Category header + copy-all-category */}
+              <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${activeMeta.color}`}>{activeMeta.key}</span>
+                  <span className="text-xs text-gray-400 ml-2">{activeBucket.total} lead{activeBucket.total === 1 ? "" : "s"}</span>
+                </div>
+                <button onClick={() => copyEmails(activeBucket.leads, activeMeta.short)} className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg text-xs font-medium transition">📧 Copy category emails ({activeBucket.total})</button>
+              </div>
+
+              {/* Sub-category tabs */}
+              <div className="px-5 py-2.5 border-b border-gray-100 flex flex-wrap gap-2 bg-gray-50">
+                <button onClick={() => setActiveSub("all")}
+                  className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${activeSub === "all" ? "bg-red-600 text-white" : "bg-white hover:bg-gray-100 text-gray-600 border border-gray-200"}`}>
+                  All ({activeBucket.total})
+                </button>
+                {activeMeta.subs.map(s => {
+                  const n = (activeBucket.subs[s.key] || []).length
+                  return (
+                    <button key={s.key} disabled={n === 0} onClick={() => setActiveSub(s.key)} title={s.hint}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition ${activeSub === s.key ? "bg-red-600 text-white" : n === 0 ? "bg-white text-gray-300 border border-gray-100 cursor-not-allowed" : "bg-white hover:bg-gray-100 text-gray-600 border border-gray-200"}`}>
+                      {s.key} ({n})
+                    </button>
+                  )
+                })}
+              </div>
+
+              {/* Shown-list header + copy-current-view */}
+              <div className="px-5 py-2 border-b border-gray-100 flex items-center justify-between">
+                <span className="text-xs text-gray-500">{activeSub === "all" ? "All sub-categories" : activeSub} · {shownLeads.length} lead{shownLeads.length === 1 ? "" : "s"}</span>
+                <button onClick={() => copyEmails(shownLeads, activeSub === "all" ? activeMeta.short : activeSub)} className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-medium transition">📧 Copy these ({shownLeads.length})</button>
+              </div>
+
+              {/* Leads table: name / email / number */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 border-b border-gray-200">
+                    <tr>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500 w-10">#</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Name</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Email</th>
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Number</th>
+                      {activeSub === "all" && <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Sub-category</th>}
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Counsellor</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {shownLeads.map((l, i) => {
+                      const subForThis = l.objections.find(o => o.category === activeCat)?.subCategory || ""
+                      return (
+                        <tr key={l.fileId + "_" + i} className="hover:bg-gray-50">
+                          <td className="px-4 py-2 text-gray-400">{i + 1}</td>
+                          <td className="px-4 py-2 font-medium text-gray-900 whitespace-nowrap">{l.name}</td>
+                          <td className="px-4 py-2 text-gray-600">{l.email || <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-2 whitespace-nowrap">{l.phone ? <a href={`tel:${l.phone}`} className="text-blue-600 hover:underline">{l.phone}</a> : "—"}</td>
+                          {activeSub === "all" && <td className="px-4 py-2 text-gray-500">{subForThis}</td>}
+                          <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{l.counsellor}</td>
+                        </tr>
+                      )
+                    })}
+                    {shownLeads.length === 0 && (
+                      <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-xs">No leads in this sub-category</td></tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
