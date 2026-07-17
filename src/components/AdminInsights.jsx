@@ -458,7 +458,11 @@ export function parseCallsHistory(rawRows, targetDate, subStageMap = {}, notesMa
       stageType: stageTypeMap[p] || cellText(row[18]),
       source: sourceMap[p] || cellText(row[22]),
       leadStage: leadStageMap[p] || cellText(row[23]),
-      durationMins: parseDurationMins(row[24] ?? row[11]),
+      // Prefer col Y "Call Duration in Mins" (row[24]); fall back to raw "Duration"
+      // (row[11], e.g. "0h 0m 16s"). NOTE: use `||` not `??` — api/calls.js coerces
+      // NULLs to "", and "" ?? x keeps "", so `??` never falls back. col Y is currently
+      // NULL in the DB, so the raw Duration column is what actually carries the data.
+      durationMins: parseDurationMins(cellText(row[24]) || cellText(row[11])),
       subStage: subStageMap[p] || "",
     }
   })
