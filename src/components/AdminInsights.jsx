@@ -3459,6 +3459,39 @@ function snapObjection(o) {
   return { category: cat.key, subCategory: sub.key }
 }
 
+// Truncation-tolerant recovery of classification entries. Scans from the
+// "classifications" array's open bracket and returns every complete top-level
+// { ... } object it can JSON.parse — so a response cut off mid-array still yields
+// all entries before the cut. (robustJSONParse's truncation branch is tuned to the
+// overview schema, so it can't recover this one.)
+function salvageClassifications(raw) {
+  const start = raw.indexOf("[")
+  if (start < 0) return []
+  const out = []
+  let depth = 0, objStart = -1, inStr = false, esc = false
+  for (let i = start; i < raw.length; i++) {
+    const ch = raw[i]
+    if (inStr) {
+      if (esc) esc = false
+      else if (ch === "\\") esc = true
+      else if (ch === '"') inStr = false
+      continue
+    }
+    if (ch === '"') { inStr = true; continue }
+    if (ch === "{") { if (depth === 0) objStart = i; depth++ }
+    else if (ch === "}") {
+      if (depth > 0) {
+        depth--
+        if (depth === 0 && objStart >= 0) {
+          try { out.push(JSON.parse(raw.slice(objStart, i + 1))) } catch { /* skip a partial object */ }
+          objStart = -1
+        }
+      }
+    }
+  }
+  return out
+}
+
 // Classify one batch of transcripts. Returns [{ fileId, name, email, phone,
 // counsellor, source, objections:[{category, subCategory}] }] — no-objection
 // calls and unmatched categories are already filtered out.
@@ -3485,7 +3518,7 @@ RULES:
 - For EACH call, list every DISTINCT category the lead actually raises. A call may raise multiple categories.
 - Within a category you include, pick the SINGLE best-fitting sub-category. You MUST use one of the listed sub-categories — never invent one; always force the closest match.
 - Classify only what the LEAD expresses; ignore the counsellor's pitch.
-- If a call has NO real objection (positive, neutral, only info-gathering, wrong number, or no answer), return an EMPTY objections array for it — do not force a category.
+- If a call has NO real objection (positive, neutral, only info-gathering, wrong number, or no answer), OMIT that call from the output entirely — do not force a category.
 - "Language barrier (Hindi / regional)" under Operational IS a valid bucket here — classify it whenever the lead is not comfortable in English (this is a bucket, not a quality judgement).
 
 Return ONLY raw JSON (no markdown, no code fences):
@@ -3494,7 +3527,7 @@ Return ONLY raw JSON (no markdown, no code fences):
     { "call": 1, "objections": [ { "category": "exact main category name", "subCategory": "exact sub-category name" } ] }
   ]
 }
-One entry per call number above. objections is [] when the lead raises none.`
+Include ONLY calls where the lead raises at least one objection — skip all others. Keep it compact: no extra fields, no commentary.`
 
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -3513,8 +3546,16 @@ One entry per call number above. objections is [] when the lead raises none.`
   if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
   const d = await r.json()
   const raw = d.content.map(b => b.text || "").join("").replace(/```json|```/g, "").trim()
-  const parsed = robustJSONParse(raw)
-  const list = parsed && Array.isArray(parsed.classifications) ? parsed.classifications : []
+  let list = []
+  try {
+    const parsed = robustJSONParse(raw)
+    if (parsed && Array.isArray(parsed.classifications)) list = parsed.classifications
+  } catch { /* fall through to salvage */ }
+  // Salvage path: if the JSON was truncated (large batch) or wrapped in prose,
+  // recover every COMPLETE { call, objections } object — a cut-off tail just drops
+  // its last entry instead of losing the whole batch. Never throw here: an
+  // unparseable batch contributes nothing rather than sinking the entire run.
+  if (!list.length) list = salvageClassifications(raw)
 
   const out = []
   list.forEach(c => {
@@ -4444,11 +4485,14 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
       const texts = await Promise.all(transcripts.map(async t => {
         const r = await fetch(`/api/drive?action=read&fileId=${t.fileId}`); const d = await r.json(); return d.text || ""
       }))
-      const BATCH = 25
+      const BATCH = 15
       const batches = []
       for (let i = 0; i < transcripts.length; i += BATCH) batches.push({ ts: transcripts.slice(i, i + BATCH), tx: texts.slice(i, i + BATCH) })
-      const results = await Promise.all(batches.map(b => fetchObjectionClassification(b.ts, b.tx)))
-      const all = results.flat()
+      // allSettled so one failed/unparseable batch can't sink the whole day's run.
+      const settled = await Promise.allSettled(batches.map(b => fetchObjectionClassification(b.ts, b.tx)))
+      const all = settled.flatMap(s => (s.status === "fulfilled" ? s.value : []))
+      const failed = settled.filter(s => s.status === "rejected")
+      if (all.length === 0 && failed.length) throw new Error(failed[0].reason?.message || "Classification failed")
       const stamp = new Date().toISOString()
       setClassifiedLeads(all); setBuiltAt(stamp)
       await aiCacheSet(cKey, { leads: all, builtAt: stamp })
