@@ -3357,7 +3357,7 @@ IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call be
 // classifies each call's transcript into EVERY distinct category the LEAD raises
 // (multiple allowed — decision), forcing the closest sub-category (decision).
 // Calls with no objection are dropped (decision). Results cache per day in Neon
-// under objection_buckets:v2:{counsellor}:{date} — fresh per date, computed on demand.
+// under objection_buckets:v3:{counsellor}:{date} — fresh per date, computed on demand.
 // Every objection must carry a verbatim quote that is verified to occur in that
 // call's own transcript; ungrounded ones are dropped (precision over coverage).
 
@@ -3472,8 +3472,13 @@ function snapObjection(o) {
 // Normalise text for evidence matching: lowercase, drop punctuation, collapse
 // whitespace. Lets a quote match even if the model differs on commas/casing,
 // while still requiring the same words in the same order.
+//
+// MUST be Unicode-aware: these transcripts are largely Devanagari (Hindi, and
+// English spoken in Hindi). An [^a-z0-9] strip deletes 100% of that text, which
+// made every quote fail to match and silently emptied every bucket.
+// \p{L}\p{N} keeps letters/digits in ANY script and drops only punctuation.
 function normForMatch(s) {
-  return String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
+  return String(s || "").toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim()
 }
 
 // Truncation-tolerant recovery of classification entries. Scans from the
@@ -3531,9 +3536,12 @@ async function fetchObjectionClassification(transcripts, texts) {
 OBJECTION TAXONOMY — 8 main categories, each with fixed sub-categories:
 ${taxonomyBlock}
 
+LANGUAGE: These transcripts are mostly HINDI written in Devanagari script (including English words spelled in Devanagari, e.g. "आई एम कॉलिंग फ्रॉम मास्टर्स यूनियन"). Read and understand them as-is. The "evidence" quote MUST be copied in the ORIGINAL script exactly as it appears — never transliterate it to Latin letters and never translate it to English.
+
 RULES — BE STRICT. A wrong bucket is far worse than a missing one:
 - Include a category ONLY if the LEAD explicitly says it in THIS call's transcript. If you are not certain, leave it out.
-- Every objection MUST include "evidence": a VERBATIM quote copied word-for-word from THIS call's transcript showing the lead raising it. Never paraphrase, translate, summarise or invent the quote. If you cannot copy an exact quote, DO NOT include the objection.
+- Every objection MUST include "evidence": a VERBATIM quote copied character-for-character from THIS call's transcript showing the lead raising it. Never paraphrase, transliterate, translate, summarise or invent the quote. If you cannot copy an exact quote, DO NOT include the objection.
+- Many calls are gatekeepers, wrong numbers, voicemail greetings or "call me later" pleasantries with no real objection — OMIT those.
 - Do NOT infer objections from the lead's name, source, stage, or from what a typical lead might say. Only what is actually spoken in this transcript.
 - Each call is INDEPENDENT. Never carry an objection from one call over to another.
 - Classify only what the LEAD expresses; ignore the counsellor's pitch. The counsellor mentioning the fee is NOT a Fee objection — only the lead pushing back on it is.
@@ -4525,7 +4533,7 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
         noDuration: enriched.filter(t => t.callSeconds === null).length,
       })
 
-      const cached = await aiCacheGet(`objection_buckets:v2:${counsellorFilter}:${dateFilter}`)
+      const cached = await aiCacheGet(`objection_buckets:v3:${counsellorFilter}:${dateFilter}`)
       if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || "") }
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
@@ -4535,7 +4543,7 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
     if (!transcripts.length) return
     setClassifying(true); setClassifyErr("")
     try {
-      const cKey = `objection_buckets:v2:${counsellorFilter}:${dateFilter}`
+      const cKey = `objection_buckets:v3:${counsellorFilter}:${dateFilter}`
       if (!skipCache) {
         const cached = await aiCacheGet(cKey)
         if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || ""); setClassifying(false); return }
