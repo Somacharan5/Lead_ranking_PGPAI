@@ -3533,6 +3533,9 @@ async function fetchObjectionClassification(transcripts, texts) {
   const prompt =
     `You are an admissions analyst for Masters Union (AI & Advanced Analytics programme, ₹22.65L fee). For each call transcript, classify the OBJECTIONS the LEAD (the customer — not the counsellor) raises.
 
+CALLS (${transcripts.length} total):
+${block}
+
 OBJECTION TAXONOMY — 8 main categories, each with fixed sub-categories:
 ${taxonomyBlock}
 
