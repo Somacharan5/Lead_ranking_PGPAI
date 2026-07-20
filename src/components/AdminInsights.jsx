@@ -3357,7 +3357,9 @@ IMPORTANT: Do NOT flag calls where the counsellor ended or shortened the call be
 // classifies each call's transcript into EVERY distinct category the LEAD raises
 // (multiple allowed — decision), forcing the closest sub-category (decision).
 // Calls with no objection are dropped (decision). Results cache per day in Neon
-// under objection_buckets:{counsellor}:{date} — fresh per date, computed on demand.
+// under objection_buckets:v2:{counsellor}:{date} — fresh per date, computed on demand.
+// Every objection must carry a verbatim quote that is verified to occur in that
+// call's own transcript; ungrounded ones are dropped (precision over coverage).
 
 const OBJECTION_TAXONOMY = [
   {
@@ -3460,7 +3462,14 @@ function snapObjection(o) {
     })
   }
   if (!sub) sub = cat.subs[0]   // still nothing in common → first sub
-  return { category: cat.key, subCategory: sub.key }
+  return { category: cat.key, subCategory: sub.key, evidence: String(o?.evidence || "").trim().slice(0, 300) }
+}
+
+// Normalise text for evidence matching: lowercase, drop punctuation, collapse
+// whitespace. Lets a quote match even if the model differs on commas/casing,
+// while still requiring the same words in the same order.
+function normForMatch(s) {
+  return String(s || "").toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim()
 }
 
 // Truncation-tolerant recovery of classification entries. Scans from the
@@ -3518,20 +3527,23 @@ async function fetchObjectionClassification(transcripts, texts) {
 OBJECTION TAXONOMY — 8 main categories, each with fixed sub-categories:
 ${taxonomyBlock}
 
-RULES:
-- For EACH call, list every DISTINCT category the lead actually raises. A call may raise multiple categories.
-- Within a category you include, pick the SINGLE best-fitting sub-category. You MUST use one of the listed sub-categories — never invent one; always force the closest match.
-- Classify only what the LEAD expresses; ignore the counsellor's pitch.
-- If a call has NO real objection (positive, neutral, only info-gathering, wrong number, or no answer), OMIT that call from the output entirely — do not force a category.
-- "Language barrier (Hindi / regional)" under Operational IS a valid bucket here — classify it whenever the lead is not comfortable in English (this is a bucket, not a quality judgement).
+RULES — BE STRICT. A wrong bucket is far worse than a missing one:
+- Include a category ONLY if the LEAD explicitly says it in THIS call's transcript. If you are not certain, leave it out.
+- Every objection MUST include "evidence": a VERBATIM quote copied word-for-word from THIS call's transcript showing the lead raising it. Never paraphrase, translate, summarise or invent the quote. If you cannot copy an exact quote, DO NOT include the objection.
+- Do NOT infer objections from the lead's name, source, stage, or from what a typical lead might say. Only what is actually spoken in this transcript.
+- Each call is INDEPENDENT. Never carry an objection from one call over to another.
+- Classify only what the LEAD expresses; ignore the counsellor's pitch. The counsellor mentioning the fee is NOT a Fee objection — only the lead pushing back on it is.
+- A call may raise multiple categories. Within a category, pick the SINGLE best-fitting sub-category from the list. "Force the closest match" applies ONLY to choosing the sub-category AFTER you have already confirmed the category from the transcript — it is NEVER a reason to include a category.
+- If a call has NO real objection (positive, neutral, only info-gathering, wrong number, no answer, or too short to tell), OMIT that call from the output entirely.
+- "Language barrier (Hindi / regional)" under Operational IS a valid bucket here — use it when the lead says they are not comfortable in English (quote them).
 
 Return ONLY raw JSON (no markdown, no code fences):
 {
   "classifications": [
-    { "call": 1, "objections": [ { "category": "exact main category name", "subCategory": "exact sub-category name" } ] }
+    { "call": 1, "objections": [ { "category": "exact main category name", "subCategory": "exact sub-category name", "evidence": "exact verbatim quote from THIS call" } ] }
   ]
 }
-Include ONLY calls where the lead raises at least one objection — skip all others. Keep it compact: no extra fields, no commentary.`
+Include ONLY calls where the lead raises at least one QUOTABLE objection — skip all others. No commentary.`
 
   const r = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -3563,11 +3575,18 @@ Include ONLY calls where the lead raises at least one objection — skip all oth
 
   const out = []
   list.forEach(c => {
-    const t = transcripts[(c.call || 0) - 1]
+    const idx = (c.call || 0) - 1
+    const t = transcripts[idx]
     if (!t) return
+    // GROUNDING CHECK: the quote must actually occur in THIS call's transcript.
+    // This is what stops hallucinated buckets and cross-call bleed within a batch —
+    // a quote borrowed from another call simply won't be found here, so it's dropped.
+    const haystack = normForMatch(texts[idx] || "")
     const seenCat = new Set()
     const objections = []
     ;(Array.isArray(c.objections) ? c.objections : []).forEach(o => {
+      const ev = normForMatch(o?.evidence)
+      if (ev.length < 12 || !haystack.includes(ev)) return   // unquotable / ungrounded → drop
       const snapped = snapObjection(o)
       if (!snapped || seenCat.has(snapped.category)) return   // one sub per category
       seenCat.add(snapped.category)
@@ -4471,7 +4490,7 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
       if (apiErr) throw new Error(apiErr)
       const enriched = (files || []).map(f => ({ ...f, leadInfo: leadPhoneMap[f.customerPhone] || null }))
       setTranscripts(enriched)
-      const cached = await aiCacheGet(`objection_buckets:${counsellorFilter}:${dateFilter}`)
+      const cached = await aiCacheGet(`objection_buckets:v2:${counsellorFilter}:${dateFilter}`)
       if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || "") }
     } catch (e) { setError(e.message) } finally { setLoading(false) }
   }
@@ -4481,7 +4500,7 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
     if (!transcripts.length) return
     setClassifying(true); setClassifyErr("")
     try {
-      const cKey = `objection_buckets:${counsellorFilter}:${dateFilter}`
+      const cKey = `objection_buckets:v2:${counsellorFilter}:${dateFilter}`
       if (!skipCache) {
         const cached = await aiCacheGet(cKey)
         if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || ""); setClassifying(false); return }
@@ -4489,9 +4508,18 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
       const texts = await Promise.all(transcripts.map(async t => {
         const r = await fetch(`/api/drive?action=read&fileId=${t.fileId}`); const d = await r.json(); return d.text || ""
       }))
+      // A call with (almost) no transcript cannot contain a spoken objection —
+      // unanswered / 0-second calls would otherwise sit in the prompt inviting a guess.
+      const MIN_TRANSCRIPT_CHARS = 80
+      const usable = transcripts
+        .map((t, i) => ({ t, text: texts[i] || "" }))
+        .filter(p => p.text.trim().length >= MIN_TRANSCRIPT_CHARS)
       const BATCH = 15
       const batches = []
-      for (let i = 0; i < transcripts.length; i += BATCH) batches.push({ ts: transcripts.slice(i, i + BATCH), tx: texts.slice(i, i + BATCH) })
+      for (let i = 0; i < usable.length; i += BATCH) {
+        const slice = usable.slice(i, i + BATCH)
+        batches.push({ ts: slice.map(p => p.t), tx: slice.map(p => p.text) })
+      }
       // allSettled so one failed/unparseable batch can't sink the whole day's run.
       const settled = await Promise.allSettled(batches.map(b => fetchObjectionClassification(b.ts, b.tx)))
       const all = settled.flatMap(s => (s.status === "fulfilled" ? s.value : []))
@@ -4652,12 +4680,15 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Email</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Number</th>
                       {activeSub === "all" && <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Sub-category</th>}
+                      <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Why (their words)</th>
                       <th className="px-4 py-2 text-left text-xs font-semibold text-gray-500">Counsellor</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {shownLeads.map((l, i) => {
-                      const subForThis = l.objections.find(o => o.category === activeCat)?.subCategory || ""
+                      const objForThis  = l.objections.find(o => o.category === activeCat)
+                      const subForThis  = objForThis?.subCategory || ""
+                      const evidForThis = objForThis?.evidence || ""
                       return (
                         <tr key={l.fileId + "_" + i} className="hover:bg-gray-50">
                           <td className="px-4 py-2 text-gray-400">{i + 1}</td>
@@ -4665,12 +4696,15 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
                           <td className="px-4 py-2 text-gray-600">{l.email || <span className="text-gray-300">—</span>}</td>
                           <td className="px-4 py-2 whitespace-nowrap">{l.phone ? <a href={`tel:${l.phone}`} className="text-blue-600 hover:underline">{l.phone}</a> : "—"}</td>
                           {activeSub === "all" && <td className="px-4 py-2 text-gray-500">{subForThis}</td>}
+                          <td className="px-4 py-2 text-gray-500 italic max-w-[340px] truncate" title={evidForThis}>
+                            {evidForThis ? `“${evidForThis}”` : <span className="text-gray-300 not-italic">—</span>}
+                          </td>
                           <td className="px-4 py-2 text-gray-600 whitespace-nowrap">{l.counsellor}</td>
                         </tr>
                       )
                     })}
                     {shownLeads.length === 0 && (
-                      <tr><td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-xs">No leads in this sub-category</td></tr>
+                      <tr><td colSpan={7} className="px-4 py-8 text-center text-gray-400 text-xs">No leads in this sub-category</td></tr>
                     )}
                   </tbody>
                 </table>
