@@ -3444,6 +3444,10 @@ const OBJECTION_TAXONOMY = [
 
 const OBJ_CAT_BY_LOWER = Object.fromEntries(OBJECTION_TAXONOMY.map(c => [c.key.toLowerCase(), c]))
 
+// Calls shorter than this can't hold a real objection conversation — excluded
+// before any AI work. Joined from call_history by phone (transcripts have no duration).
+const MIN_CALL_SECONDS = 30
+
 // Snap a raw {category, subCategory} from the model onto the fixed taxonomy.
 // Category must match a real category (case-insensitive) or the objection is dropped.
 // Sub-category is forced to the closest listed sub (exact → substring → first sub).
@@ -4460,6 +4464,7 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
   const [activeCat, setActiveCat] = useState(null)
   const [activeSub, setActiveSub] = useState("all")
   const [copyMsg, setCopyMsg] = useState("")
+  const [skipStats, setSkipStats] = useState(null)
 
   // phone → pipeline row — the exact same join transcripts use for enrichment.
   // Gives us each lead's email (looked up from Lead / App-Start dump) plus name/source.
@@ -4479,17 +4484,47 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
   useEffect(() => { loadForDate() /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [dateFilter, counsellorFilter])
 
   // Load the day's transcript list from Drive + any saved buckets for this date.
+  // Transcripts carry no duration, so we join them to call_history by phone to
+  // enforce the MIN_CALL_SECONDS gate — a very short call cannot hold a real
+  // objection conversation.
   async function loadForDate() {
-    setLoading(true); setError(""); setTranscripts([]); setClassifiedLeads(null); setActiveCat(null); setBuiltAt("")
+    setLoading(true); setError(""); setTranscripts([]); setClassifiedLeads(null); setActiveCat(null); setBuiltAt(""); setSkipStats(null)
     try {
       const ps = new URLSearchParams({ action: "list", date: dateFilter })
       if (counsellorFilter !== "all") ps.set("counsellor", counsellorFilter)
-      const r = await fetch(`/api/drive?${ps}`)
+      const [r, callsResp] = await Promise.all([
+        fetch(`/api/drive?${ps}`),
+        fetch(`/api/calls?date=${dateFilter}`).then(x => (x.ok ? x.json() : { rows: [] })).catch(() => ({ rows: [] })),
+      ])
       if (!r.ok) throw new Error(r.status === 404 ? "API route not found — deploy to Vercel first." : `Drive API error (${r.status})`)
       const { files, error: apiErr } = await r.json()
       if (apiErr) throw new Error(apiErr)
-      const enriched = (files || []).map(f => ({ ...f, leadInfo: leadPhoneMap[f.customerPhone] || null }))
-      setTranscripts(enriched)
+
+      // phone → longest call that day, in seconds (a number may be dialled twice)
+      const secsByPhone = {}
+      ;(callsResp.rows || []).forEach(row => {
+        const p = phone10(row[7])
+        if (!p) return
+        const secs = Math.round(parseDurationMins(cellText(row[24]) || cellText(row[11])) * 60)
+        if (!(p in secsByPhone) || secs > secsByPhone[p]) secsByPhone[p] = secs
+      })
+
+      const enriched = (files || []).map(f => ({
+        ...f,
+        leadInfo: leadPhoneMap[f.customerPhone] || null,
+        callSeconds: f.customerPhone in secsByPhone ? secsByPhone[f.customerPhone] : null,
+      }))
+      // Drop short calls. An unmatched transcript (no call row to join) is KEPT —
+      // a failed join shouldn't silently delete data — but it still has to clear the
+      // transcript-length and evidence-grounding checks downstream.
+      const eligible = enriched.filter(t => t.callSeconds === null || t.callSeconds >= MIN_CALL_SECONDS)
+      setTranscripts(eligible)
+      setSkipStats({
+        found:      enriched.length,
+        tooShort:   enriched.filter(t => t.callSeconds !== null && t.callSeconds < MIN_CALL_SECONDS).length,
+        noDuration: enriched.filter(t => t.callSeconds === null).length,
+      })
+
       const cached = await aiCacheGet(`objection_buckets:v2:${counsellorFilter}:${dateFilter}`)
       if (cached && Array.isArray(cached.leads)) { setClassifiedLeads(cached.leads); setBuiltAt(cached.builtAt || "") }
     } catch (e) { setError(e.message) } finally { setLoading(false) }
@@ -4570,7 +4605,13 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
           {MAIN_COUNSELLORS.map(c => <option key={c.key} value={c.key}>{c.short}</option>)}
         </select>
         <span className="ml-auto text-xs text-gray-400">
-          {loading ? "Loading…" : transcripts.length > 0 ? `${transcripts.length} transcripts` : ""}
+          {loading ? "Loading…" : skipStats ? (
+            <>
+              <strong className="text-gray-600">{transcripts.length}</strong> eligible of {skipStats.found}
+              {skipStats.tooShort > 0 && <span> · {skipStats.tooShort} skipped &lt;{MIN_CALL_SECONDS}s</span>}
+              {skipStats.noDuration > 0 && <span> · {skipStats.noDuration} no duration</span>}
+            </>
+          ) : ""}
         </span>
       </div>
 
