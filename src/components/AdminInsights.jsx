@@ -3571,7 +3571,16 @@ Include ONLY calls where the lead raises at least one QUOTABLE objection — ski
       messages: [{ role: "user", content: prompt }],
     }),
   })
-  if (!r.ok) throw new Error(`Claude ${r.status}: ${r.statusText}`)
+  if (!r.ok) {
+    // Surface the API's own message — r.statusText is just "Bad Request", which
+    // hides the actionable cause (e.g. "Your credit balance is too low…").
+    let detail = r.statusText
+    try {
+      const err = await r.json()
+      if (err?.error?.message) detail = err.error.message
+    } catch { /* non-JSON error body — keep statusText */ }
+    throw new Error(`Claude ${r.status}: ${detail}`)
+  }
   const d = await r.json()
   const raw = d.content.map(b => b.text || "").join("").replace(/```json|```/g, "").trim()
   let list = []
@@ -4562,6 +4571,14 @@ function ObjectionsBucketPanel({ date: propDate, mainTab, pipelineRows }) {
       for (let i = 0; i < usable.length; i += BATCH) {
         const slice = usable.slice(i, i + BATCH)
         batches.push({ ts: slice.map(p => p.t), tx: slice.map(p => p.text) })
+      }
+      // Nothing to classify — fail loudly instead of caching a misleading
+      // "0 leads with objections", which reads as "no objections found".
+      if (batches.length === 0) {
+        throw new Error(
+          `None of the ${transcripts.length} transcripts had at least ${MIN_TRANSCRIPT_CHARS} characters of text — nothing to classify. ` +
+          `Check that the transcript files actually contain conversation text.`
+        )
       }
       // allSettled so one failed/unparseable batch can't sink the whole day's run.
       const settled = await Promise.allSettled(batches.map(b => fetchObjectionClassification(b.ts, b.tx)))
